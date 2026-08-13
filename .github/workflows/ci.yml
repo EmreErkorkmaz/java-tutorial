@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: product-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven # keeps ~/.m2 between runs, so dependencies are not re-downloaded
+
+      # Testcontainers starts a real Postgres during the integration test.
+      # No extra setup needed: GitHub-hosted runners already have Docker.
+      - name: Build and test
+        run: ./mvnw -B clean verify
+
+      # Proves the image still builds - a broken Dockerfile should fail CI, not deploy day.
+      - name: Build Docker image
+        run: docker build -t product-service:ci .
