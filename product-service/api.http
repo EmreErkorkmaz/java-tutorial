@@ -1,0 +1,148 @@
+### product-service API requests
+# IntelliJ's built-in HTTP Client understands this file - hit the green play icon
+# next to a request to run it. No Postman needed, and the requests are versioned
+# in the repo next to the code they exercise.
+#
+# Start the app first:  ./mvnw spring-boot:run
+
+@baseUrl = http://localhost:8080/api/products
+
+### Register a user (expects 201; run it again for 409)
+POST http://localhost:8080/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "emre",
+  "password": "supersecret1"
+}
+
+### Log in and keep the token for the requests below
+# The handler stores the JWT in a variable, so every write request below can just say
+# "Authorization: Bearer {{token}}" instead of pasting the token by hand.
+POST http://localhost:8080/api/auth
+Content-Type: application/json
+
+{
+  "username": "emre",
+  "password": "supersecret1"
+}
+
+> {%
+    client.global.set("token", response.body.token);
+    client.test("responds with 200 and a token", function() {
+        client.assert(response.status === 200, "Expected 200 but got: " + response.status);
+        client.assert(response.body.token !== undefined, "No token in the response");
+    });
+%}
+
+### Get all products (public - no credentials needed)
+GET {{baseUrl}}
+Accept: application/json
+
+### Get all paginated products
+GET {{baseUrl}}?size=5&sort=price,desc
+Accept: application/json
+
+### Create a product (expects 201 - needs the token from the login request above)
+# The response handler script below stores the generated id in a variable so the
+# following requests can reuse it (the equivalent of a Postman environment variable).
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Mechanical Keyboard",
+  "price": 1450.00
+}
+
+> {%
+    client.global.set("productId", response.body.id);
+    client.test("responds with 201", function() {
+        client.assert(response.status === 201, "Expected 201 but got: " + response.status);
+    });
+%}
+
+### Get one product (uses the id captured above)
+GET {{baseUrl}}/{{productId}}
+Accept: application/json
+
+### Update a product
+PUT {{baseUrl}}/{{productId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Mechanical Keyboard V2",
+  "price": 1650.00
+}
+
+### Delete a product (expects 204 - no body)
+DELETE {{baseUrl}}/{{productId}}
+Authorization: Bearer {{token}}
+
+### --- Error scenarios ---
+
+### Unknown id (404 via ProductNotFoundException)
+GET {{baseUrl}}/999999
+
+### Blank name (400 - @NotBlank also rejects whitespace)
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "   ",
+  "price": 100.00
+}
+
+### Negative price (400 - @Positive)
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Mouse",
+  "price": -5.00
+}
+
+### Two invalid fields at once (400 - validation reports both, it does not stop at the first)
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "",
+  "price": 0
+}
+
+### Try to inject an id through the body (ignored - the DB generates its own, thanks to the DTO)
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "id": 999,
+  "name": "Headphones",
+  "price": 800.00
+}
+
+### No token at all (401 - the identity is what is missing here)
+POST {{baseUrl}}
+Content-Type: application/json
+
+{
+  "name": "Anonymous attempt",
+  "price": 10.00,
+  "categoryId": 1
+}
+
+### Tampered token (401 - the signature no longer matches the payload)
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}X
+
+{
+  "name": "Tampered attempt",
+  "price": 10.00,
+  "categoryId": 1
+}
