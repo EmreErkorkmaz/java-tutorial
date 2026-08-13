@@ -171,10 +171,14 @@ Kısa tanımlar; her biri projede karşılığıyla birlikte görüldü.
   - Konfigürasyon env variable ile geliyor (`SPRING_DATASOURCE_URL` → `spring.datasource.url`) — repo'ya dokunmadan ortam değiştirmenin yolu
   - `depends_on: condition: service_healthy` ilk gün yazdığımız healthcheck'i kullanıyor
   - `docker compose down` sonrası veri korundu (named volume) — doğrulandı
-- [ ] Ortam bazlı konfigürasyon — Spring profiles (`dev`/`prod`), env variable ile secret yönetimi
-- [ ] **CI pipeline** (GitHub Actions): build + test + lint her push'ta
+- [x] Ortam bazlı konfigürasyon — env variable'lar `application.properties`'i eziyor (`SPRING_DATASOURCE_URL` → `spring.datasource.url`); compose bunu kullanıyor
+- [x] **CI pipeline** (GitHub Actions) — her push/PR'da `mvnw clean verify` + `docker build`; ilk çalıştırmada geçti
+  - Testcontainers CI'da ekstra kurulum istemiyor (runner'da Docker hazır) — testleri kendi DB'sini açacak şekilde kurmanın karşılığı
+  - Öğrenilen: `git add` bulunduğun dizine göredir; `.github/` kökten eklenmeliydi
 - [ ] Image registry'e push, basit bir yere deploy (Railway / Fly.io / Render gibi)
-- [ ] **Observability:** structured logging + Spring Actuator health/metrics endpoint'leri **[uygulama]**; Prometheus + Grafana dashboard **[opsiyonel]**
+- [x] **Actuator** — `/actuator/health` + compose healthcheck; sadece `health,info` expose ediliyor (diğer endpoint'ler bilgi sızdırır)
+  - `liveness` = "öldür ve yeniden başlat", `readiness` = "trafiği kes ama bekle". Load balancer/K8s Service readiness'a bakar
+- [ ] Prometheus + Grafana dashboard — **[opsiyonel]**
 - [ ] **[teori]** Kubernetes temelleri — pod/service/deployment kavramları, neden ve ne zaman gerekir (mid-level fullstack için uygulaması overkill)
 
 ## Faz 6 — İkinci servis & senkron iletişim
