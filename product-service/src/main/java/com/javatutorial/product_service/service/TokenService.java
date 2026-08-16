@@ -1,8 +1,11 @@
 package com.javatutorial.product_service.service;
 
+import com.javatutorial.product_service.model.AppUser;
+import com.javatutorial.product_service.repository.AppUserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -18,13 +21,16 @@ import java.util.stream.Collectors;
 public class TokenService {
 
     private final JwtEncoder jwtEncoder;
+    private final AppUserRepository userRepository;
     private final Duration validity;
 
     public TokenService(
             JwtEncoder jwtEncoder,
+            AppUserRepository userRepository,
             @Value("${security.jwt.validity-minutes}") long validityMinutes
     ) {
         this.jwtEncoder = jwtEncoder;
+        this.userRepository = userRepository;
         this.validity = Duration.ofMinutes(validityMinutes);
     }
 
@@ -36,11 +42,14 @@ public class TokenService {
                 .map(GrantedAuthority::getAuthority)
                 .filter(authority -> authority.startsWith("ROLE_"))
                 .collect(Collectors.joining(" "));
+        AppUser user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new UsernameNotFoundException(authentication.getName()));
 
         JwtClaimsSet claims = JwtClaimsSet.builder().issuer("product-service")
                 .issuedAt(now)
                 .expiresAt(now.plus(validity)) // the decoder enforces this on every request
-                .subject(authentication.getName())
+                .subject(String.valueOf(user.getId())) // stable id: never reassigned, unlike a username
+                .claim("username", user.getUsername()) // stable id: never reassigned, unlike a username
                 .claim("roles", roles)
                 .build();
 

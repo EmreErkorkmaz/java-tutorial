@@ -195,11 +195,27 @@ java-tutorial/
 ```
 
 - [ ] **[teori]** Monolit vs mikroservis trade-off'ları — ne zaman hangisi, mikroservisin gizli maliyetleri (network, veri tutarlılığı, operasyonel yük)
-- [ ] **[uygulama]** `order-service` iskeleti — kendi DB'si ile (database-per-service prensibi: servisler birbirinin tablosuna dokunmaz)
-- [ ] **[uygulama]** `order-service` → `product-service` **senkron REST çağrısı** (sipariş anında ürün/fiyat doğrulama)
-  - `RestClient` ile (Spring'in modern senkron HTTP client'ı; `RestTemplate` legacy, `WebClient` reactive senaryolar için)
-  - Declarative alternatif: `@HttpExchange` ile interface tabanlı client
-- [ ] **[uygulama]** Senkron çağrının kırılganlığı: `product-service` yavaşsa/düşerse ne olur → **timeout, retry, circuit breaker** (Resilience4j)
+- [x] **`order-service` iskeleti** — 8081, kendi `orderdb`'si, Flyway V1+V2, `ddl-auto=validate` geçiyor
+  - Domain: `Order` (başlık) + `OrderItem` (satırlar), `@OneToMany(cascade = ALL, orphanRemoval = true)`; satırlar yalnızca `order.addItem()` ile doğabilir (package-private constructor)
+  - İade akışı: `OrderStatus` (CREATED/RETURNED), kural `Order.markReturned()` içinde — durumu tutan sınıf kuralı da tutar
+  - `product_id` foreign key **değil** (tablo başka serviste); `order_item.order_id` foreign key **olabiliyor** (aynı servis) — servis sınırı = bütünlük sınırı
+  - Fiyat ve ürün adı snapshot olarak saklanıyor: ürün fiyatı değişince geçmiş siparişler değişmemeli
+  - JWT `sub` username'den **user id**'ye çevrildi; `username` yalnızca görüntü snapshot'ı
+  - V1 düzenlenmedi, V2 eklendi (uygulanmış migration'ın checksum'ı tutulur)
+- [x] **`order-service` → `product-service` senkron REST çağrısı** — `RestClient`, `client/` paketinde `ProductClient`
+  - Fiyat ve ürün adı sunucudan geliyor; istemci yalnızca `productId` + `quantity` gönderebiliyor (metot imzası güvenlik sınırı)
+  - Uzak 404 → kendi domain exception'ımıza çevriliyor (`ProductNotFoundException` → 400); bağlantı hatası → 503
+  - `create` bilinçli olarak `@Transactional` **değil**: uzak çağrı açık transaction içinde DB bağlantısını rehin alırdı
+  - Bilinen eksik: satır başına bir HTTP çağrısı — **N+1'in dağıtık hali**. Çözümü toplu endpoint (`GET /api/products?ids=...`)
+- [x] **Dayanıklılık** — timeout + retry + bulkhead. Ölçüldü:
+  - Timeout: `JdkClientHttpRequestFactory` (connect 2s, read 3s). **Zorunlu** — yoksa yavaş bağımlılık thread'leri tüketir (cascading failure)
+  - `@Retryable` (Spring Framework 7, harici kütüphane yok): `includes` ile sadece bağımlılık arızası, `maxRetries=2`, `multiplier=2.0`, `jitter` (thundering herd'ü önler)
+  - `@ConcurrencyLimit(20)` = bulkhead: yavaş bağımlılık en fazla 20 thread tutabilir
+  - `@EnableResilientMethods` olmadan ikisi de **sessizce yok sayılır**
+  - **Ölçüm:** servis kapalıyken 14 ms → 782 ms (3 deneme + 200/400 ms gecikme). Yani retry'ın bedeli kalıcı kesintide gecikme ve 3x yük → circuit breaker'ın gerekçesi bu
+  - Kısmi bozulma doğrulandı: `product-service` kapalıyken sipariş **oluşturulamıyor** ama liste/okuma ve health çalışmaya devam ediyor
+- [ ] **[teori]** Circuit breaker — Spring core'da yok (Resilience4j gerekir). CLOSED → OPEN → HALF_OPEN; retry geçici hatayı, breaker kalıcı kesintiyi çözer
+- [ ] **SIRADAKİ:** token propagation — `ProductClient` şu an çağrıyı **anonim** yapıyor; işliyor çünkü `GET /api/products/**` public. Endpoint korumalı olsaydı token'ın taşınması gerekirdi
 
 ## Faz 7 — Message queue & event-driven mimari
 
