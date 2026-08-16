@@ -215,6 +215,9 @@ java-tutorial/
   - **Ölçüm:** servis kapalıyken 14 ms → 782 ms (3 deneme + 200/400 ms gecikme). Yani retry'ın bedeli kalıcı kesintide gecikme ve 3x yük → circuit breaker'ın gerekçesi bu
   - Kısmi bozulma doğrulandı: `product-service` kapalıyken sipariş **oluşturulamıyor** ama liste/okuma ve health çalışmaya devam ediyor
 - [ ] **[teori]** Circuit breaker — Spring core'da yok (Resilience4j gerekir). CLOSED → OPEN → HALF_OPEN; retry geçici hatayı, breaker kalıcı kesintiyi çözer
+- [x] `order-service` Dockerfile + CI'a dahil edildi — workflow artık **matrix** ile iki servisi paralel build ediyor (`fail-fast: false`)
+  - Yaşanan hata: Initializr'ın varsayılan `@SpringBootTest` testi DB istiyordu, CI'da Postgres yok → Testcontainers eklendi. Prensip: **test bağımlılığını kendi ayağa kaldırır**, ortamdan hazır bulmayı beklemez
+  - `compose.yaml` CI'da kullanılmaz; o lokal geliştirme aracı. CI temiz makinede build+test yapar
 - [ ] **SIRADAKİ:** token propagation — `ProductClient` şu an çağrıyı **anonim** yapıyor; işliyor çünkü `GET /api/products/**` public. Endpoint korumalı olsaydı token'ın taşınması gerekirdi
 
 ## Faz 7 — Message queue & event-driven mimari
