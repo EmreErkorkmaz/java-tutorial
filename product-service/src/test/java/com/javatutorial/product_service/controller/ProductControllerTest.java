@@ -42,6 +42,7 @@ class ProductControllerTest {
     private UserDetailsService userDetailsService;
 
     @Test
+    @WithMockUser // reads need a token now too - this test is about the JSON contract, not auth
     void getAll_returnsProductListAsJson() throws Exception {
         Product product = new Product("Keyboard", new BigDecimal("1200.50"), new Category("Electronics"));
         // when(productService.findAll())
@@ -56,6 +57,13 @@ class ProductControllerTest {
                 // .andExpect(jsonPath("$[0].categoryName").value("Electronics")); // assert the JSON contract, not the internals
                 .andExpect(jsonPath("$.content[0].name").value("Keyboard"))
                 .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void getAll_whenAnonymous_returnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/products"))
+                .andExpect(status().isUnauthorized());
+        // catalog reads are no longer public: this locks that decision in
     }
 
     @Test
