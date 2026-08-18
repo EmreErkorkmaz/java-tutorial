@@ -3,6 +3,7 @@ package com.javatutorial.order_service.service;
 import com.javatutorial.order_service.client.ProductClient;
 import com.javatutorial.order_service.dto.CreateOrderRequest;
 import com.javatutorial.order_service.exception.OrderNotFoundException;
+import com.javatutorial.order_service.exception.ProductNotFoundException;
 import com.javatutorial.order_service.model.Order;
 import com.javatutorial.order_service.repository.OrderRepository;
 import org.springframework.data.domain.Page;
@@ -11,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
@@ -26,11 +29,21 @@ public class OrderService {
     // transaction, or a slow product-service would hold a DB connection hostage. The single
     // save() at the end is transactional on its own, so atomicity is not lost.
     public Order create(Long userId, String username, List<CreateOrderRequest.Item> items) {
-        List<Order.Line> lines = items.stream()
-                .map(item -> {
-                    ProductClient.ProductView product = productClient.findById(item.productId());
-                    return new Order.Line(product.id(), product.name(), product.price(), item.quantity());
-                }).toList();
+        List<Long> productIds = items.stream().map(CreateOrderRequest.Item::productId).toList();
+        // One call for the whole order instead of one per line - the distributed N+1 fix
+        Map<Long, ProductClient.ProductView> productsById = productClient.findByIds(productIds).stream()
+                .collect(Collectors.toMap(ProductClient.ProductView::id, product -> product));
+
+        List<Order.Line> lines = items.stream().map(item -> {
+            // The batch endpoint omits ids it could not find, so an absent key means
+            // the product does not exist - the same error the caller got before.
+            ProductClient.ProductView product = productsById.get(item.productId());
+            if (product == null) {
+                throw new ProductNotFoundException(item.productId());
+            }
+
+            return new Order.Line(product.id(), product.name(), product.price(), item.quantity());
+        }).toList();
 
         return orderRepository.save(Order.create(userId, username, lines));
     }

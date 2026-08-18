@@ -18,6 +18,7 @@ import java.util.List;
 @Transactional(readOnly = true) // class-level default: every method is a read unless it says otherwise
 public class ProductService {
 
+    private static final int MAX_BATCH_SIZE = 100;
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
 
@@ -33,6 +34,16 @@ public class ProductService {
     public Product findById(Long id) {
         return productRepository.findById(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Product> findAllByIds(List<Long> ids) {
+        // An unbounded id list lets one request pull the whole table. The cap is both a
+        // guard and documentation of what the endpoint promises.
+        if (ids.size() > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException("At most " + MAX_BATCH_SIZE + " ids per request, got " + ids.size());
+        }
+        return productRepository.findByIdIn(ids);
     }
 
     @Transactional

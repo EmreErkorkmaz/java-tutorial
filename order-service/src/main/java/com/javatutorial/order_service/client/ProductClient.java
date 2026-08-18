@@ -3,6 +3,7 @@ package com.javatutorial.order_service.client;
 import com.javatutorial.order_service.exception.ProductAccessDeniedException;
 import com.javatutorial.order_service.exception.ProductNotFoundException;
 import com.javatutorial.order_service.exception.ProductServiceUnavailableException;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.resilience.annotation.ConcurrencyLimit;
 import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Component
 public class ProductClient {
@@ -50,6 +52,28 @@ public class ProductClient {
                     .body(ProductView.class);
         } catch (ResourceAccessException e) {
             // timeout, connection refused, DNS failure - the dependency is down, not the request wrong
+            throw new ProductServiceUnavailableException(e);
+        }
+    }
+
+    @Retryable(
+            includes = ProductServiceUnavailableException.class,
+            maxRetries = 2, delay = 200, multiplier = 2.0, jitter = 50)
+    @ConcurrencyLimit(20)
+    public List<ProductView> findByIds(List<Long> productIds) {
+        try {
+            return restClient.get().uri(uri ->
+                            uri.path("/api/products/by-ids")
+                                    .queryParam("ids", productIds).build())
+                    .retrieve()
+                    .onStatus(status -> status.value() == 401 || status.value() == 403,
+                            (request, response) -> {
+                                throw new ProductAccessDeniedException(response.getStatusCode().value());
+                            })
+                    // ParameterizedTypeReference: generics are erased at runtime, so a plain
+                    // List.class would lose the ProductView type. This carries it through.
+                    .body(new ParameterizedTypeReference<List<ProductView>>() {});
+        } catch (ResourceAccessException e) {
             throw new ProductServiceUnavailableException(e);
         }
     }

@@ -36,12 +36,22 @@ public class ProductController {
         return productService.findAll(pageable)
                 // .stream() // Stream API: similar to chaining .map()/.filter() on a JS array
                 .map(ProductResponse::from); // method reference -> shorthand for (p) -> ProductResponse.from(p)
-                // .toList(); // collects the stream back into a List (Java 16+)
+        // .toList(); // collects the stream back into a List (Java 16+)
     }
 
     @GetMapping("/{id}")
     public ProductResponse getById(@PathVariable Long id) {
         return ProductResponse.from(productService.findById(id)); // the entity no longer leaks out
+    }
+
+    // Separate path on purpose: the paginated collection returns a Page, this returns a
+    // plain List. One URL that sometimes returns one shape and sometimes another is worse
+    // than two clearly named endpoints.
+    @GetMapping("/by-ids")
+    public List<ProductResponse> getByIds(@RequestParam List<Long> ids) {
+        // Missing ids are simply absent from the response rather than failing the whole
+        // request - the caller can see which ones came back and decide what that means.
+        return productService.findAllByIds(ids).stream().map(ProductResponse::from).toList();
     }
 
     @PreAuthorize("hasRole('ADMIN')")

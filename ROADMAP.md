@@ -206,7 +206,7 @@ java-tutorial/
   - Fiyat ve ürün adı sunucudan geliyor; istemci yalnızca `productId` + `quantity` gönderebiliyor (metot imzası güvenlik sınırı)
   - Uzak 404 → kendi domain exception'ımıza çevriliyor (`ProductNotFoundException` → 400); bağlantı hatası → 503
   - `create` bilinçli olarak `@Transactional` **değil**: uzak çağrı açık transaction içinde DB bağlantısını rehin alırdı
-  - Bilinen eksik: satır başına bir HTTP çağrısı — **N+1'in dağıtık hali**. Çözümü toplu endpoint (`GET /api/products?ids=...`) — **SIRADAKİ İŞ**
+  - ~~Bilinen eksik: satır başına bir HTTP çağrısı~~ → **çözüldü** (aşağıda)
 - [x] **Dayanıklılık** — timeout + retry + bulkhead. Ölçüldü:
   - Timeout: `JdkClientHttpRequestFactory` (connect 2s, read 3s). **Zorunlu** — yoksa yavaş bağımlılık thread'leri tüketir (cascading failure)
   - `@Retryable` (Spring Framework 7, harici kütüphane yok): `includes` ile sadece bağımlılık arızası, `maxRetries=2`, `multiplier=2.0`, `jitter` (thundering herd'ü önler)
@@ -214,6 +214,12 @@ java-tutorial/
   - `@EnableResilientMethods` olmadan ikisi de **sessizce yok sayılır**
   - **Ölçüm:** servis kapalıyken 14 ms → 782 ms (3 deneme + 200/400 ms gecikme). Yani retry'ın bedeli kalıcı kesintide gecikme ve 3x yük → circuit breaker'ın gerekçesi bu
   - Kısmi bozulma doğrulandı: `product-service` kapalıyken sipariş **oluşturulamıyor** ama liste/okuma ve health çalışmaya devam ediyor
+- [x] **Dağıtık N+1 çözüldü** — `GET /api/products/by-ids?ids=...` toplu endpoint. Ölçüldü: 5 satırlı sipariş **5 HTTP çağrısı + 5 SQL → 1 + 1**
+  - Aynı problem, bir katman yukarıda: Faz 3'te `@EntityGraph` ile çözdüğümüz N+1'in ağ üzerindeki hali. Kalıp aynı — döngü içinde tek tek sorma, hepsini bir kere iste
+  - API tasarım kararı: `GET ?ids=` vs `POST /search`. İkisi de sektörde yaygın (Spotify `?ids=` / Elasticsearch `_mget` body). Seçim kriterleri: id sayısı (URL ~2000 karakter sınırı), HTTP cache isteniyor mu, public API mi iç servis mi. **GET seçildi**, ek gerekçe: `@Retryable` açık ve GET spec gereği safe+idempotent
+  - Ayrı path (`/by-ids`) çünkü mevcut koleksiyon endpoint'i `Page` dönüyor; aynı URL'in bazen `Page` bazen `List` dönmesi istemci için kötü
+  - Eksik id'ler yanıttan **düşürülüyor**, tüm istek reddedilmiyor; çağıran farkı görüp kendi hatasını üretiyor. `MAX_BATCH_SIZE=100` sınırı (doğrulandı: 101 id → 400)
+  - `ParameterizedTypeReference` gerekli: generics runtime'da silinir, `List.class` ile Jackson eleman tipini bilemez
 - [x] `order-service` testleri — `OrderServiceTest` (uzak çağrı mock'lu: fiyatın istemciden değil servisten geldiğini, iki kez iadenin engellendiğini, başkasının siparişinin 404 davrandığını doğruluyor) + `OrderControllerTest` (`@WebMvcTest` + `jwt()` post-processor: anonim 401, kimlikli 201, boş items 400)
   - `jwt()` gerçek imza üretmeden `SecurityContext`'e çözülmüş token koyar — test kriptografiyi değil controller'ın kimliği doğru okumasını doğrular
 - [ ] **[teori]** Circuit breaker — Spring core'da yok (Resilience4j gerekir). CLOSED → OPEN → HALF_OPEN; retry geçici hatayı, breaker kalıcı kesintiyi çözer

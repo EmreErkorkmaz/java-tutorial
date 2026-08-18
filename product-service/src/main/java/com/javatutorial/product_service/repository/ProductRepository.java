@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.javatutorial.product_service.model.Product;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,4 +34,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Override
     @EntityGraph(attributePaths = "category")
     Optional<Product> findById(Long id);
+
+    // findByIdIn -> "WHERE id IN (?, ?, ?)"
+    @EntityGraph(attributePaths = "category")
+    List<Product> findByIdIn(Collection<Long> ids);
 }

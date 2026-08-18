@@ -69,4 +69,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        // A bad request, not a server fault: the caller asked for something out of bounds
+        Map<String, Object> body = Map.of(
+                "timestamp", Instant.now(),
+                "status", 400,
+                "error", "BadRequest",
+                "message", ex.getMessage()
+        );
+        return ResponseEntity.badRequest().body(body);
+    }
+
 }
