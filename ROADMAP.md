@@ -206,7 +206,7 @@ java-tutorial/
   - Fiyat ve ürün adı sunucudan geliyor; istemci yalnızca `productId` + `quantity` gönderebiliyor (metot imzası güvenlik sınırı)
   - Uzak 404 → kendi domain exception'ımıza çevriliyor (`ProductNotFoundException` → 400); bağlantı hatası → 503
   - `create` bilinçli olarak `@Transactional` **değil**: uzak çağrı açık transaction içinde DB bağlantısını rehin alırdı
-  - Bilinen eksik: satır başına bir HTTP çağrısı — **N+1'in dağıtık hali**. Çözümü toplu endpoint (`GET /api/products?ids=...`)
+  - Bilinen eksik: satır başına bir HTTP çağrısı — **N+1'in dağıtık hali**. Çözümü toplu endpoint (`GET /api/products?ids=...`) — **SIRADAKİ İŞ**
 - [x] **Dayanıklılık** — timeout + retry + bulkhead. Ölçüldü:
   - Timeout: `JdkClientHttpRequestFactory` (connect 2s, read 3s). **Zorunlu** — yoksa yavaş bağımlılık thread'leri tüketir (cascading failure)
   - `@Retryable` (Spring Framework 7, harici kütüphane yok): `includes` ile sadece bağımlılık arızası, `maxRetries=2`, `multiplier=2.0`, `jitter` (thundering herd'ü önler)
@@ -214,11 +214,26 @@ java-tutorial/
   - `@EnableResilientMethods` olmadan ikisi de **sessizce yok sayılır**
   - **Ölçüm:** servis kapalıyken 14 ms → 782 ms (3 deneme + 200/400 ms gecikme). Yani retry'ın bedeli kalıcı kesintide gecikme ve 3x yük → circuit breaker'ın gerekçesi bu
   - Kısmi bozulma doğrulandı: `product-service` kapalıyken sipariş **oluşturulamıyor** ama liste/okuma ve health çalışmaya devam ediyor
+- [x] `order-service` testleri — `OrderServiceTest` (uzak çağrı mock'lu: fiyatın istemciden değil servisten geldiğini, iki kez iadenin engellendiğini, başkasının siparişinin 404 davrandığını doğruluyor) + `OrderControllerTest` (`@WebMvcTest` + `jwt()` post-processor: anonim 401, kimlikli 201, boş items 400)
+  - `jwt()` gerçek imza üretmeden `SecurityContext`'e çözülmüş token koyar — test kriptografiyi değil controller'ın kimliği doğru okumasını doğrular
 - [ ] **[teori]** Circuit breaker — Spring core'da yok (Resilience4j gerekir). CLOSED → OPEN → HALF_OPEN; retry geçici hatayı, breaker kalıcı kesintiyi çözer
 - [x] `order-service` Dockerfile + CI'a dahil edildi — workflow artık **matrix** ile iki servisi paralel build ediyor (`fail-fast: false`)
   - Yaşanan hata: Initializr'ın varsayılan `@SpringBootTest` testi DB istiyordu, CI'da Postgres yok → Testcontainers eklendi. Prensip: **test bağımlılığını kendi ayağa kaldırır**, ortamdan hazır bulmayı beklemez
   - `compose.yaml` CI'da kullanılmaz; o lokal geliştirme aracı. CI temiz makinede build+test yapar
-- [ ] **SIRADAKİ:** token propagation — `ProductClient` şu an çağrıyı **anonim** yapıyor; işliyor çünkü `GET /api/products/**` public. Endpoint korumalı olsaydı token'ın taşınması gerekirdi
+- [x] **Token propagation** — `product-service`'te ürün okuma korumaya alındı, `ProductClient` gelen token'ı iletiyor
+  - `RestClient.requestInterceptor` ile `SecurityContextHolder`'daki **doğrulanmış** token iletiliyor (ham header değil)
+  - `SecurityContextHolder` **ThreadLocal**: `@Async`/executor ile başka thread'e geçen iş context'i göremez, token sessizce eklenmez → `DelegatingSecurityContext*` sarmalayıcıları
+  - İki model karşılaştırıldı: **kullanıcı token'ı taşıma** (kullanıcı isteğinden doğan çağrılar) vs **service account** (cron, kuyruk tüketicisi). Propagation'da yetki kuralı aşağıdaki serviste kalır, service account'ta yetki mantığı dağılır
+  - Hata eşlemesi: uzak 401/403 → `ProductAccessDeniedException` → **502**. Kullanıcı bizde yetkiliydi, arıza servisler arası atlamada; 401 dönmek "tekrar giriş yap" der ve hiçbir şeyi çözmez
+  - İki ayrı çeviri sınırı: `onStatus` (gelen HTTP → Java istisnası), `@ExceptionHandler` (Java istisnası → giden HTTP). Ham `HttpClientErrorException`'ı sızdırmak hata yönetimini transport'a bağlar
+- [x] **HS256'nın sınırı — canlı gösterildi.** `order-service`'e "doğrulasın diye" verilen sır ile `ROLE_ADMIN` token'ı üretildi; `emre` gerçek token'ıyla **403** alırken sahte token **201** aldı
+  - **Simetrik imzada doğrulama yeteneği = üretme yeteneği.** Anahtarı paylaştığın her servis token basabilir; biri ele geçirilirse blast radius tüm sistem
+
+- [ ] **[teori]** **RS256 + JWKS** — asimetrik imzaya geçiş (uygulanmadı; production'da IdP'nin işi)
+  - Private key yalnızca üreticide (imzalar), public key dağıtılır (doğrular) → doğrulayan **üretemez**. Public key sızsa da değersiz
+  - **JWKS**: üretici public anahtarı `/.well-known/jwks.json`'da yayınlar, doğrulayanlar çekip cache'ler. Kazanç: anahtar rotasyonunda servisleri yeniden deploy etmek gerekmez (`kid` header'ı hangi anahtar olduğunu söyler)
+  - Spring tarafında karşılığı tek property: `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` — decoder'ı Boot kendisi kurar, elle `JwtConfig` gerekmez
+  - Keycloak/Auth0/Cognito hepsi böyle çalışır; gerçek projede bu mekanizma yazılmaz, yapılandırılır
 
 ## Faz 7 — Message queue & event-driven mimari
 
@@ -246,6 +261,19 @@ Referans akış (kod yazmadan üzerinde konuşacağımız senaryo): sipariş olu
 - [ ] **[opsiyonel]** **Distributed tracing** — Micrometer Tracing + Zipkin; correlation ID ile bir isteği servisler arası takip etmek
 - [ ] **[teori]** Dağıtık sistem temelleri: CAP teoremi, eventual consistency, idempotency, split-brain
 - [ ] **[teori]** Klasik system design egzersizleri (URL shortener, rate limiter, feed, bildirim sistemi) — çizim + trade-off tartışması
+
+### Mimari karar konuları (ağırlık verilecek — solutions architecture yönü)
+
+Her biri "hangi durumda hangisi ve neden" formatında, tercihen bu projedeki bir karara bağlanarak.
+
+- [ ] **Runtime/dil seçimi** — iş yükünün şekli belirler: I/O-yoğun + çok bağlantı → Node (event loop); CPU-yoğun veya ağır domain/transaction → Go/Java/Rust. JVM warm-up serverless'ta maliyet, Go tek binary ile container'da avantaj. Pratikte ekip bilgisi ve ekosistem teknik farktan baskın. Yaygın kombinasyon: web/BFF Node, domain çekirdek JVM
+- [ ] **Eşzamanlılık modelleri** — tek thread + event loop vs thread-per-request; bloklamanın maliyeti; paylaşılan state ve thread-safety (Java'da gerekli, Node'da değil); Java 21 virtual threads farkı nasıl kapatıyor
+- [ ] **Senkron vs asenkron iletişim** — ne zaman REST, ne zaman event; eventual consistency'nin API/UX'e yansıması
+- [ ] **Veri tutarlılığı** — güçlü tutarlılık vs eventual; saga, outbox; dağıtık sistemde foreign key'in kaybı
+- [ ] **Ölçekleme asimetrisi** — stateless app yatayda ucuz, database değil; read replica, cache, sharding sırası ve maliyetleri
+- [ ] **Cache stratejileri** — cache-aside vs write-through; invalidation; stale data ne zaman kabul edilebilir
+- [ ] **Monolit → mikroservis geçiş kararı** — ne zaman bölünür, ne zaman bölünmez; dağıtık monolit anti-pattern'i
+- [ ] **Build vs buy** — auth (IdP), ödeme, arama, bildirim: hangi durumda hazır çözüm alınır
 
 ## Faz 9 — Portfolyo projesi & mülakat hazırlığı
 

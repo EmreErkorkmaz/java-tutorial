@@ -38,7 +38,7 @@ public class SecurityConfig {
                         // rules are evaluated top to bottom, FIRST match wins
                         // registration must be reachable without credentials, by definition
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                        // .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
                         .anyRequest().authenticated()

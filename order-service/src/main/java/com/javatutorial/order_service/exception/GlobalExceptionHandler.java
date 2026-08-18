@@ -63,4 +63,12 @@ public class GlobalExceptionHandler {
                 "error", error,
                 "message", message));
     }
+
+    @ExceptionHandler(ProductAccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleUpstreamRejected(ProductAccessDeniedException ex) {
+        // 502 Bad Gateway: the user was authorised with US, the failure is in the hop between
+        // services. Returning 401 here would tell them to log in again, which fixes nothing.
+        return build(HttpStatus.BAD_GATEWAY, "BadGateway",
+                "Could not reach product service with a valid identity");
+    }
 }

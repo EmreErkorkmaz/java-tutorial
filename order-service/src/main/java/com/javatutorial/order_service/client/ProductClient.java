@@ -1,5 +1,6 @@
 package com.javatutorial.order_service.client;
 
+import com.javatutorial.order_service.exception.ProductAccessDeniedException;
 import com.javatutorial.order_service.exception.ProductNotFoundException;
 import com.javatutorial.order_service.exception.ProductServiceUnavailableException;
 import org.springframework.resilience.annotation.ConcurrencyLimit;
@@ -39,6 +40,13 @@ public class ProductClient {
                             {
                                 throw new ProductNotFoundException(productId);
                             })
+                    // Downstream refused our identity. In this system product reads have no
+                    // per-user rules, so this means our propagation is broken or the token
+                    // expired mid-flight - an integration fault, not a user mistake.
+                    .onStatus(status -> status.value() == 401 || status.value() == 403,
+                            (request, response) -> {
+                                throw new ProductAccessDeniedException(response.getStatusCode().value());
+                            })
                     .body(ProductView.class);
         } catch (ResourceAccessException e) {
             // timeout, connection refused, DNS failure - the dependency is down, not the request wrong
@@ -47,5 +55,6 @@ public class ProductClient {
     }
 
     // Only the fields we need. product-service may add more; ignoring them keeps us decoupled.
-    public record ProductView(Long id, String name, BigDecimal price) {}
+    public record ProductView(Long id, String name, BigDecimal price) {
+    }
 }

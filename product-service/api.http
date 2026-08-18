@@ -35,13 +35,15 @@ Content-Type: application/json
     });
 %}
 
-### Get all products (public - no credentials needed)
+### Get all products (reads require a token too now - the catalog is not public)
 GET {{baseUrl}}
 Accept: application/json
+Authorization: Bearer {{token}}
 
 ### Get all paginated products
 GET {{baseUrl}}?size=5&sort=price,desc
 Accept: application/json
+Authorization: Bearer {{token}}
 
 ### Create a product (expects 201 - needs the token from the login request above)
 # The response handler script below stores the generated id in a variable so the
@@ -65,6 +67,7 @@ Authorization: Bearer {{token}}
 ### Get one product (uses the id captured above)
 GET {{baseUrl}}/{{productId}}
 Accept: application/json
+Authorization: Bearer {{token}}
 
 ### Update a product
 PUT {{baseUrl}}/{{productId}}
@@ -84,6 +87,7 @@ Authorization: Bearer {{token}}
 
 ### Unknown id (404 via ProductNotFoundException)
 GET {{baseUrl}}/999999
+Authorization: Bearer {{token}}
 
 ### Blank name (400 - @NotBlank also rejects whitespace)
 POST {{baseUrl}}
