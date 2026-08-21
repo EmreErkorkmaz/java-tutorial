@@ -1,0 +1,77 @@
+# Whole stack for local development: one Postgres, two services.
+#
+#   docker compose up -d --build    build and start everything
+#   docker compose ps               health of each service
+#   docker compose logs -f order    follow one service
+#   docker compose down             stop (data survives in the named volume)
+#   docker compose down -v          stop AND wipe the data volume
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: product-db
+    environment:
+      POSTGRES_DB: productdb
+      POSTGRES_USER: product
+      POSTGRES_PASSWORD: secret   # local only - real environments read this from a secret store
+    ports:
+      - "5432:5432"               # exposed so you can still run a service from the IDE
+    volumes:
+      - product-pgdata:/var/lib/postgresql
+      # Runs only when the data directory is empty, i.e. on a fresh volume. It exists so a
+      # new machine gets both databases without anyone remembering a manual CREATE DATABASE.
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U product -d productdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  product:
+    build: ./product-service
+    container_name: product-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/productdb
+      SPRING_DATASOURCE_USERNAME: product
+      SPRING_DATASOURCE_PASSWORD: secret
+      SECURITY_JWT_SECRET: dev-only-secret-change-me-32-chars-min!!
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  order:
+    build: ./order-service
+    container_name: order-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      product:
+        condition: service_healthy   # not required at runtime, but a saner dev startup order
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderdb
+      SPRING_DATASOURCE_USERNAME: product
+      SPRING_DATASOURCE_PASSWORD: secret
+      SECURITY_JWT_SECRET: dev-only-secret-change-me-32-chars-min!!
+      # "product" is the compose service name, resolved by compose's own DNS.
+      # This is the line that would have to change if the service moved hosts - and it is
+      # configuration, not code, which is exactly the point.
+      PRODUCT_SERVICE_BASE_URL: http://product:8080
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  product-pgdata:

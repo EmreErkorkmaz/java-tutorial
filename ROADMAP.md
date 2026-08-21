@@ -52,7 +52,7 @@ Stack: Spring Boot 4.1.0, Java 21, Maven, H2 (in-memory), Spring Data JPA
 
 ## Faz 3 — Gerçek veritabanı & DB derinliği
 
-- [x] H2 → **PostgreSQL** geçişi, Postgres'i **Docker** ile ayağa kaldırma ([compose.yaml](product-service/compose.yaml) — postgres:18-alpine, named volume, healthcheck)
+- [x] H2 → **PostgreSQL** geçişi, Postgres'i **Docker** ile ayağa kaldırma (postgres:18-alpine, named volume, healthcheck — compose sonradan kök seviyeye taşındı: [compose.yaml](compose.yaml))
 - [x] `ddl-auto=create-drop` yerine **Flyway** ile şema migration'ları — `V1__create_product_table.sql`, `ddl-auto=validate`, `flyway_schema_history` tablosu; DB seviyesinde `NOT NULL` + `CHECK (price > 0)` ile katmanlı savunma (API baypas edilerek doğrulandı)
 - [x] İlişkiler — `Category` entity + `@ManyToOne(fetch = LAZY)` + `@JoinColumn`; `V2__add_category.sql` (dolu tabloya zorunlu FK ekleme: nullable ekle → backfill → `SET NOT NULL`; FK index'i Postgres'te elle açılır)
 - [x] **N+1 query problemi** — logda ölçüldü: 20 ürün / 20 farklı kategori → **21 sorgu**. Çözüm `@EntityGraph(attributePaths = "category")` ile **1 sorguya** düştü (join'li tek sorgu, doğrulandı).
@@ -222,6 +222,14 @@ java-tutorial/
   - `ParameterizedTypeReference` gerekli: generics runtime'da silinir, `List.class` ile Jackson eleman tipini bilemez
 - [x] `order-service` testleri — `OrderServiceTest` (uzak çağrı mock'lu: fiyatın istemciden değil servisten geldiğini, iki kez iadenin engellendiğini, başkasının siparişinin 404 davrandığını doğruluyor) + `OrderControllerTest` (`@WebMvcTest` + `jwt()` post-processor: anonim 401, kimlikli 201, boş items 400)
   - `jwt()` gerçek imza üretmeden `SecurityContext`'e çözülmüş token koyar — test kriptografiyi değil controller'ın kimliği doğru okumasını doğrular
+- [x] **Tek compose ile tüm yığın** — kök `compose.yaml`: postgres + product (8080) + order (8081), üçü de healthcheck'li
+  - Tek Postgres **instance**, iki **database** (`productdb`, `orderdb`). Database-per-service veritabanı seviyesinde sağlanıyor; production'da genelde ayrı instance olur (yük/kesinti/ölçekleme/yedekleme ayrışsın diye)
+  - Bilinen zayıflık: iki servis de aynı `product` DB kullanıcısını kullanıyor. Tam izolasyon ayrı kullanıcı ister — sınır iki katmanlı olmalı (ayrı database + ayrı kullanıcı)
+  - `docker/init-db.sql` `orderdb`'yi otomatik oluşturuyor (yalnızca boş volume'de çalışır) → kurulum tekrarlanabilir, doğrulandı: sıfırdan ayağa kalkıp 3 migration uygulandı
+  - Volume adı **proje adıyla** öneklenir (`java-tutorial_product-pgdata`); compose dosyasını taşımak yeni volume demek → eski veri gelmez
+  - `container_name` çakışmaya yol açtı (eski projeden kalan container aynı adı tutuyordu) ve `--scale`'i imkânsız kılar; gerçek projede kullanılmaz, burada `docker exec product-db` kolaylığı için tutuldu
+  - `PRODUCT_SERVICE_BASE_URL` env variable'ı `@Value("${product-service.base-url}")` ile eşleşti (relaxed binding `@Value`'da da çalıştı) — adres kod değil konfigürasyon
+  - Build yavaşlığı: container host'un `~/.m2`'sini görmez, bağımlılıklar sıfırdan iner. Çözüm `RUN --mount=type=cache,target=/root/.m2` (henüz uygulanmadı)
 - [ ] **[teori]** Circuit breaker — Spring core'da yok (Resilience4j gerekir). CLOSED → OPEN → HALF_OPEN; retry geçici hatayı, breaker kalıcı kesintiyi çözer
 - [x] `order-service` Dockerfile + CI'a dahil edildi — workflow artık **matrix** ile iki servisi paralel build ediyor (`fail-fast: false`)
   - Yaşanan hata: Initializr'ın varsayılan `@SpringBootTest` testi DB istiyordu, CI'da Postgres yok → Testcontainers eklendi. Prensip: **test bağımlılığını kendi ayağa kaldırır**, ortamdan hazır bulmayı beklemez
