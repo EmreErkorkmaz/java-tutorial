@@ -105,7 +105,7 @@ Referans akış: sipariş oluşturulur → `order.created` event'i yayınlanır 
 
 Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kalır — broker'ın kendisi ekiplerin kurduğu/satın aldığı katman, ama publish/consume'u bir kez gözle görmek async'in ne kazandırdığını somutlaştırıyor.
 
-### 7.1 RabbitMQ + `order.created` publisher — [uygulama] [~1 oturum]
+### 7.1 RabbitMQ + `order.created` publisher — [uygulama] [~1 oturum] ✅ tamamlandı (2026-08-25)
 
 **Problem:** Faz 6'da `product-service` kapalıyken sipariş **oluşturulamıyordu** — orada beklemek doğruydu (fiyat lazım). Bildirim öyle değil: bildirim servisi çökünce siparişin de düşmesi kabul edilemez. Senkron çağrı bunu ayıramaz.
 

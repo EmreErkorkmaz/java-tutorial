@@ -1,0 +1,139 @@
+### order-service API requests
+# IntelliJ's built-in HTTP Client understands this file - hit the green play icon
+# next to a request to run it. No Postman needed, and the requests are versioned
+# in the repo next to the code they exercise.
+#
+# order-service does not issue its own tokens - it only verifies them (same HS256
+# secret as product-service, see Faz 6). So login happens against product-service
+# on 8080, and the token is reused against order-service on 8081.
+#
+# Start both apps first (or `docker compose up -d --build` from the repo root).
+
+@productBaseUrl = http://localhost:8080/api/products
+@orderBaseUrl = http://localhost:8081/api/orders
+
+### Register a user (expects 201; run it again for 409 - fine either way)
+POST http://localhost:8080/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "emre",
+  "password": "supersecret1"
+}
+
+### Log in and keep the token for every request below
+POST http://localhost:8080/api/auth
+Content-Type: application/json
+
+{
+  "username": "emre",
+  "password": "supersecret1"
+}
+
+> {%
+    client.global.set("token", response.body.token);
+    client.test("responds with 200 and a token", function() {
+        client.assert(response.status === 200, "Expected 200 but got: " + response.status);
+        client.assert(response.body.token !== undefined, "No token in the response");
+    });
+%}
+
+### Create a product to order against (product-service, port 8080)
+# Kept separate from product-service/api.http's own product - that file's DELETE
+# request would otherwise remove the product this file depends on.
+POST {{productBaseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Order Test Keyboard",
+  "price": 750.00,
+  "categoryId": 2
+}
+
+> {%
+    client.global.set("productId", response.body.id);
+    client.test("responds with 201", function() {
+        client.assert(response.status === 201, "Expected 201 but got: " + response.status);
+    });
+%}
+
+### Create an order (order-service, port 8081)
+# No price, no username in the body - the server prices the line itself via
+# ProductClient (batch /by-ids call), the client is not trusted with either.
+POST {{orderBaseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "items": [
+    { "productId": {{productId}}, "quantity": 2 }
+  ]
+}
+
+> {%
+    client.global.set("orderId", response.body.id);
+    client.test("responds with 201 and a computed total", function() {
+        client.assert(response.status === 201, "Expected 201 but got: " + response.status);
+        client.assert(response.body.totalPrice !== undefined, "No totalPrice in the response");
+    });
+%}
+
+### List my orders (paginated, newest first)
+GET {{orderBaseUrl}}?size=10
+Accept: application/json
+Authorization: Bearer {{token}}
+
+### Get one order (uses the id captured above)
+GET {{orderBaseUrl}}/{{orderId}}
+Accept: application/json
+Authorization: Bearer {{token}}
+
+### Mark it returned
+POST {{orderBaseUrl}}/{{orderId}}/return
+Authorization: Bearer {{token}}
+
+### --- Error scenarios ---
+
+### Unknown order id (404 via OrderNotFoundException)
+GET {{orderBaseUrl}}/999999
+Authorization: Bearer {{token}}
+
+### Unknown product id in the order (404 via ProductNotFoundException)
+POST {{orderBaseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "items": [
+    { "productId": 999999, "quantity": 1 }
+  ]
+}
+
+### Empty items list (400 - @NotEmpty)
+POST {{orderBaseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "items": []
+}
+
+### Zero quantity (400 - @Positive)
+POST {{orderBaseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "items": [
+    { "productId": {{productId}}, "quantity": 0 }
+  ]
+}
+
+### No token at all (401)
+GET {{orderBaseUrl}}
+
+### Someone else's order (404, not 403 - see OrderService.findOwned:
+### confirming existence to a non-owner is itself a leak)
+# Register+login as a second user above with a different username, capture their
+# token into a separate variable, then GET {{orderBaseUrl}}/{{orderId}} with it.

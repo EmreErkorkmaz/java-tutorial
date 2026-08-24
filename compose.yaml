@@ -27,6 +27,19 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: order-rabbitmq
+    ports:
+      - "5672:5672"     # AMQP protokolü — uygulamaların bağlandığı port
+      - "15672:15672"   # yönetim UI — http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_running" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   product:
     build: ./product-service
     container_name: product-app
@@ -55,6 +68,8 @@ services:
         condition: service_healthy
       product:
         condition: service_healthy   # not required at runtime, but a saner dev startup order
+      rabbitmq:
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orderdb
       SPRING_DATASOURCE_USERNAME: product
@@ -64,6 +79,7 @@ services:
       # This is the line that would have to change if the service moved hosts - and it is
       # configuration, not code, which is exactly the point.
       PRODUCT_SERVICE_BASE_URL: http://product:8080
+      SPRING_RABBITMQ_HOST: rabbitmq
     ports:
       - "8081:8081"
     healthcheck:

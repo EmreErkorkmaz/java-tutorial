@@ -1,28 +1,35 @@
 package com.javatutorial.order_service.service;
 
 import com.javatutorial.order_service.client.ProductClient;
+import com.javatutorial.order_service.config.RabbitConfig;
 import com.javatutorial.order_service.dto.CreateOrderRequest;
+import com.javatutorial.order_service.event.OrderCreatedEvent;
 import com.javatutorial.order_service.exception.OrderNotFoundException;
 import com.javatutorial.order_service.exception.ProductNotFoundException;
 import com.javatutorial.order_service.model.Order;
 import com.javatutorial.order_service.repository.OrderRepository;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
     private final OrderRepository orderRepository;
     private final ProductClient productClient;
+    private final RabbitTemplate rabbitTemplate;
 
-    public OrderService(OrderRepository orderRepository, ProductClient productClient) {
+    public OrderService(OrderRepository orderRepository, ProductClient productClient, RabbitTemplate rabbitTemplate) {
         this.orderRepository = orderRepository;
         this.productClient = productClient;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     // Deliberately NOT @Transactional: the remote calls below must not run inside an open
@@ -45,7 +52,21 @@ public class OrderService {
             return new Order.Line(product.id(), product.name(), product.price(), item.quantity());
         }).toList();
 
-        return orderRepository.save(Order.create(userId, username, lines));
+        // return orderRepository.save(Order.create(userId, username, lines));
+        Order saved = orderRepository.save(Order.create(userId, username, lines));
+
+        // Published AFTER save() - create() is deliberately not @Transactional (Faz 6),
+        // so save() has already committed by this point. Publishing before commit could
+        // notify about an order that then never existed. Still not atomic with the DB
+        // write though: publish can fail after a successful save. That gap is what
+        // the outbox pattern (Faz 7.5) exists to close - here we just accept it.
+        rabbitTemplate.convertAndSend(
+                RabbitConfig.ORDER_EVENTS_EXCHANGE,
+                RabbitConfig.ORDER_CREATED_ROUTING_KEY,
+                new OrderCreatedEvent(UUID.randomUUID(), saved.getId(), saved.getUserId(), saved.totalPrice(), Instant.now())
+        );
+
+        return saved;
     }
 
     @Transactional
