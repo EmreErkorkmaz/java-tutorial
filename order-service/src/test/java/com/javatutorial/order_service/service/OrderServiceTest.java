@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -34,6 +35,9 @@ class OrderServiceTest {
 
     @Mock // the remote call is mocked: this test is about our logic, not about HTTP
     private ProductClient productClient;
+
+    @Mock // publish is a side effect, not under test here - just needs to not NPE
+    private RabbitTemplate rabbitTemplate;
 
     @InjectMocks
     private OrderService orderService;
