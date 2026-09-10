@@ -19,3 +19,4 @@ Güncel durum ve kalan işler: [ROADMAP.md](../ROADMAP.md)
 | [faz4-guvenlik.md](faz4-guvenlik.md) | Spring Security filter chain, BCrypt, JWT (HS256), rol bazlı yetki, OWASP denetimi + **fullstack güvenlik teorik özeti** |
 | [faz5-docker-devops.md](faz5-docker-devops.md) | Multi-stage Dockerfile, compose, env bazlı konfigürasyon, GitHub Actions CI, Actuator |
 | [faz6-ikinci-servis.md](faz6-ikinci-servis.md) | order-service, senkron REST çağrısı, timeout/retry/bulkhead, dağıtık N+1, token propagation, HS256'nın sınırı |
+| [faz7-event-driven.md](faz7-event-driven.md) | RabbitMQ, notification-service consumer, idempotency (dedup), DLQ + poison message, outbox/saga/Kafka teorisi |

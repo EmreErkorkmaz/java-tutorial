@@ -224,14 +224,14 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** **Sonra.** Önce yayınlarsan, transaction rollback olduğunda var olmayan bir sipariş için bildirim gitmiş olur. Ama sonrasında da atomik değildir: save başarılı olup publish patlarsa sipariş var, event yok — **ve şu anki kodumuzda bunun üstüne kullanıcı da 500 alıyor**, çünkü `convertAndSend` etrafında catch yok ve `GlobalExceptionHandler`'da AMQP'ye özel bir handler tanımlı değil. Yani sipariş DB'de duruyor ama istemci "başarısız" sinyali görüyor — muhtemelen tekrar dener ve ikinci bir sipariş daha açar. Bu boşluğun standart çözümü outbox pattern.
 **Projede:** Faz 7.1 — `create()` `@Transactional` olmadığı için `save()` zaten commit edilmiş oluyor, publish ondan sonra. 2026-09-10'da canlı doğrulandı: RabbitMQ durdurulup sipariş oluşturuldu → istemci 500 aldı, `customer_order` tablosunda satır **vardı**.
 
-**S:** Outbox pattern nedir, hangi problemi çözer?
-**C:** "DB'ye yaz + kuyruğa yayınla" iki ayrı sistem olduğu için atomik değildir. Outbox'ta event, iş kaydıyla **aynı transaction içinde** bir `outbox` tablosuna yazılır (yani ya ikisi de olur ya hiçbiri); ayrı bir süreç bu tablodan okuyup kuyruğa taşır. Mülakat favorisi.
+**S:** `[zayıf]` Outbox pattern nedir, hangi problemi çözer? (2026-09-10 teach-back: "orphan order" semptomunu doğru teşhis etti ama çözümün adını hatırlayamadı)
+**C:** "DB'ye yaz + kuyruğa yayınla" iki ayrı sistem olduğu için atomik değildir. Outbox'ta event, iş kaydıyla **aynı transaction içinde** bir `outbox` tablosuna yazılır (yani ya ikisi de olur ya hiçbiri); ayrı bir süreç (poller veya CDC/Debezium) bu tablodan yayınlanmamış satırları okuyup kuyruğa taşır. Kritik nokta: mekanizma reaktif değil — "yayınlama başarısız oldu mu" diye kontrol etmez, sadece "tabloda hâlâ yayınlanmamış satır var mı" sorar; satır durdukça (ilk deneme hiç yapılmamış olsun ya da patlamış olsun fark etmez) tekrar dener. Mülakat favorisi.
 **Çapa:** Çıkış sepeti. Mektubu kaydın yanına, aynı çekmeceye koyarsın; kurye sonra gelip alır. "Kayıt var ama mektup yok" durumu oluşmaz.
 
 **S:** Teslim garantileri: at-most-once, at-least-once, exactly-once?
 **C:** Broker'lar pratikte **at-least-once** verir — ack kaybolursa aynı mesaj tekrar teslim edilir. Exactly-once'ı broker'dan beklemek yerine consumer'ı tekrara dayanıklı (idempotent) yazmak standart çözümdür: **at-least-once + idempotent consumer = pratikte exactly-once.**
 **Çapa:** Aynı mektubun iki kopyası gelir; üstündeki takip numarasına (`eventId`) bakıp "bunu zaten işledim" der, çöpe atarsın.
-**Projede:** Faz 7.1 — `OrderCreatedEvent.eventId` (UUID) bu iş için taşınıyor.
+**Projede:** Faz 7.1 — `OrderCreatedEvent.eventId` (UUID) bu iş için taşınıyor. 2026-09-10'da canlı kanıtlandı: aynı `eventId`'yle aynı mesaj RabbitMQ UI'dan iki kez publish edildi, broker ikisini de teslim etti (engellemedi) — at-least-once'ın kendisi budur; duplicate'i durduran broker değil, `OrderCreatedListener`'daki `seen.add()` kontrolü.
 
 **S:** Var olan bir queue'ya yeni bir argüman (örn. dead-letter-exchange) eklemek için ne yapman gerekir?
 **C:** Var olan bir queue'yu **redeclare ederek değiştiremezsin** — RabbitMQ bir queue'nun argümanlarını oluşturulduktan sonra sabit kabul eder. Aynı isimde farklı argümanlarla tekrar tanımlamaya çalışırsan `PRECONDITION_FAILED` hatası alırsın (hem üreten hem tüketen servis aynı hatayla düşer, ikisi de aynı queue'yu tanımlamaya çalıştığı için). Dev'de çözüm: queue'yu sil, yeniden oluşsun. Prod'da: canlı trafik varken silinemez, yeni isimli bir queue'ya (`v2`) geçiş yapılır.
@@ -251,6 +251,17 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **Projede:** Faz 7 — `order_service.event.OrderCreatedEvent` ve `notification_service.event.OrderCreatedEvent`.
 
 ---
+
+**S:** RabbitMQ ve Kafka'nın temel farkı ne?
+**C:** RabbitMQ'da mesaj **tüketilince kuyruktan silinir** (task/command kuyruğu). Kafka'da mesaj retention süresi boyunca kalır, tüketilmiş olsa da — consumer kendi okuma pozisyonunu (offset) tutar, farklı bir consumer group aynı veriyi baştan okuyabilir (**replay edilebilir event stream**). RabbitMQ routing key ile hedefe yönlendirir; Kafka'da eşdeğeri topic + partition (paralellik birimi) + consumer group.
+**Çapa:** RabbitMQ = posta kutusu (okununca boşalır). Kafka = ses kayıt bandı (dinleyen bandı silmez, başka biri baştan dinleyebilir).
+
+**S:** Saga pattern nedir, 2PC neden kullanılmıyor?
+**C:** Servis sınırını aşan bir iş akışında (sipariş → ödeme → stok) tek bir DB transaction'ı olamaz. Saga, akışı adım zinciri olarak yönetir; bir adım başarısız olursa önceki adımlar **rollback edilmez**, yerine **compensating action** (telafi edici işlem, örn. "stok düş" başarısız olduysa "ödeme"yi geri iade et) çalıştırılır. 2PC (two-phase commit) dağıtık kilit gerektirir, servisleri kısa süre de olsa birbirine bloklar — mikroservisin bağımsızlık amacına aykırı.
+**Çapa:** Rollback = kaseti geri sarmak. Compensating action = yapılanın tersini yeni bir hareketle üstüne kaydetmek, kaset geri sarılmaz.
+
+**S:** Eventual consistency arayüze nasıl yansır?
+**C:** Sunucu tarafında "şu an tutarlı değil, birkaç saniyede tutarlı olacak" durumu varsa, arayüz bunu **gizlemez, gösterir** — kesin "Tamamlandı" yerine "Onaylanıyor" gibi bir ara durum. FE analojisi: optimistic UI update + arka planda gerçek durumu polling/websocket ile senkronize etmek aynı problemin çözümü.
 
 ## Henüz görülmedi — Faz 8'de gelecek
 

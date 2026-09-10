@@ -41,8 +41,8 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 | 4 Auth & güvenlik | ✅ [notes/faz4-guvenlik.md](notes/faz4-guvenlik.md) |
 | 5 Docker & DevOps | ✅ [notes/faz5-docker-devops.md](notes/faz5-docker-devops.md) |
 | 6 İkinci servis & senkron iletişim | ✅ [notes/faz6-ikinci-servis.md](notes/faz6-ikinci-servis.md) |
-| 7 Message queue & event-driven | 🔶 devam ediyor — 7.1 ✅, 7.2 ✅, sırada 7.3+7.4 (tek oturum), sonra 7.5 teach-back |
-| 8 Mimari olgunluk & system design | ⬜ — ağırlık "Mimari karar konuları" bloğunda |
+| 7 Message queue & event-driven | ✅ [notes/faz7-event-driven.md](notes/faz7-event-driven.md) |
+| 8 Mimari olgunluk & system design | ⬜ sıradaki — ağırlık "Mimari karar konuları" bloğunda |
 | 9 Portfolyo & mülakat hazırlığı | ⬜ |
 
 ## Çalışma tarzı (her oturumda geçerli)
@@ -101,78 +101,6 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 - [ ] **Kubernetes temelleri** — [teori] pod/service/deployment, ne zaman gerekir.
 - [ ] **Prometheus + Grafana** — [opsiyonel] Faz 8.2 (tracing) ile aynı oturumda değerlendirilir; Actuator zaten ayakta.
 - [ ] **Image registry'e push + deploy** — [uygulama] Faz 9'daki portfolyo projesiyle birleştirilecek (bkz. 9.1).
-
----
-
-## Faz 7 — Message queue & event-driven mimari
-
-Referans akış: sipariş oluşturulur → `order.created` event'i yayınlanır → `notification-service` bildirim gönderir. Sipariş, bildirimin cevabını **beklemez**.
-
-Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kalır — broker'ın kendisi ekiplerin kurduğu/satın aldığı katman, ama publish/consume'u bir kez gözle görmek async'in ne kazandırdığını somutlaştırıyor.
-
-### 7.1 RabbitMQ + `order.created` publisher — [uygulama] [~1 oturum] ✅ tamamlandı (2026-08-25)
-
-**Problem:** Faz 6'da `product-service` kapalıyken sipariş **oluşturulamıyordu** — orada beklemek doğruydu (fiyat lazım). Bildirim öyle değil: bildirim servisi çökünce siparişin de düşmesi kabul edilemez. Senkron çağrı bunu ayıramaz.
-
-**Yaklaşım:** Event yayınla, cevabını bekleme. Broker araya girince gönderen ile alan birbirini tanımaz (decoupling) ve alan ayakta olmasa bile mesaj kuyrukta bekler (dayanıklılık). Bedeli: eventual consistency + operasyonel yeni bir bileşen.
-
-**Adımlar:** compose.yaml'a `rabbitmq:4-management` (5672 + 15672 UI, healthcheck) → `order-service`'e `spring-boot-starter-amqp` → `config/RabbitConfig.java` (topic exchange `order.events`, JSON message converter) → `event/OrderCreatedEvent.java` (record: `eventId` (UUID), `orderId`, `userId`, `totalAmount`, `createdAt`) → `OrderService.create()` sonunda `RabbitTemplate.convertAndSend(...)`.
-
-**Kritik ayrıntı:** publish **DB commit'inden sonra** yapılır. `create` bilinçli olarak `@Transactional` değil (Faz 6 kararı), yani save zaten commit edilmiş oluyor. Yine de "DB'ye yaz + event yayınla" atomik değildir — publish başarısız olursa sipariş var, event yok. Outbox pattern'in var oluş sebebi tam olarak bu (7.5'te teori).
-
-**Sürüm tuzağı (doğrulanacak):** Spring AMQP'nin yeni sürümünde JSON converter sınıf adı değişmiş olabilir (`Jackson2JsonMessageConverter` → `JacksonJsonMessageConverter`). Eski tutorial'lara güvenme, IDE'de complete ettir.
-
-**Kabul kriteri:** Sipariş oluşturulunca RabbitMQ UI'da (localhost:15672) kuyrukta 1 mesaj görünür; consumer henüz yokken bile sipariş 201 döner.
-
-### 7.2 `notification-service` consumer — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-10)
-
-**Yaklaşım:** Yeni Maven modülü ama **DB'siz** — sadece `spring-boot-starter-amqp` + `spring-boot-starter-web` (health için) + tek `@RabbitListener` sınıfı. Amaç üçüncü bir CRUD servisi yazmak değil, tüketici tarafını görmek.
-
-**Dosyalar:** `notification-service/` (Initializr), `listener/OrderCreatedListener.java`, `Dockerfile` (mevcut iki servisten kopya — `--mount=type=cache` dahil), `compose.yaml` girdisi, `.github/workflows/ci.yml` matrix'ine ekleme.
-
-**Kabul kriteri (asıl ders):** `docker compose stop notification-service` → sipariş oluştur → **201 döner** (Faz 6'daki senkron çağrının aksine) → servisi başlat → mesaj tüketilir ve loglanır. Kuyruk derinliği UI'da 1 → 0.
-
-**Not al:** Senkron çağrı çağrılanın ayakta olmasını şart koşar; event yalnızca broker'ın ayakta olmasını şart koşar. Bağımlılık kaybolmaz, yer değiştirir.
-
-### 7.3 + 7.4 — tek oturumda hızlı geçilir ✅ tamamlandı (2026-09-10)
-
-Budama kararı (2026-09-10): RabbitMQ temeli 7.1/7.2'de kuruldu, bu iki madde yeni kavram getirmiyor — asenkronun **bedelini** gösteriyor. Ayrı ayrı problem→yaklaşım→entegrasyon turu yapılmaz, tek turda sıkıştırılır.
-
-**Beklenmeyen ders:** `order.created.queue`'ya dead-letter argümanı eklerken her iki servis de `PRECONDITION_FAILED` ile düştü — queue Faz 7.1'den beri argümansız duruyordu ve RabbitMQ var olan bir queue'nun argümanlarını redeclare ile değiştirmeye izin vermiyor. Dev'de çözüm: queue silinip restart edildi. Kart: `notes/kartlar.md`.
-
-### 7.3 Idempotency demo — [uygulama] [~30 dk]
-
-**Problem:** Broker'lar pratikte **at-least-once** teslim eder: ack kaybolursa aynı mesaj tekrar gelir. Consumer "bildirim gönder" yapıyorsa kullanıcı iki mail alır.
-
-**Yaklaşım:** Event'i taşıyan `eventId` ile dedup. Consumer'da `Set<UUID> seen` (in-memory yeterli — gerçek çözüm Redis/DB tablosu, çünkü in-memory restart'ta sıfırlanır ve instance başına ayrıdır; Faz 4'teki `LoginAttemptService` ile aynı sınırlama).
-
-**Kabul kriteri:** RabbitMQ UI'dan aynı mesaj elle tekrar publish edilir; log ikinci kez "işlendi" yazmaz, "duplicate skipped" yazar.
-
-**Not al:** At-least-once + idempotent consumer = pratikte exactly-once. Broker'dan exactly-once beklemek yerine consumer'ı tekrara dayanıklı yazmak standart çözümdür.
-
-### 7.4 DLQ + poison message — [uygulama] [~30 dk]
-
-**Problem:** İşlenemeyen bir mesaj sonsuz retry'a girerse kuyruğu kilitler (poison message) — arkasındaki sağlam mesajlar da işlenemez.
-
-**Yaklaşım:** Kuyruğa dead letter exchange bağla (`x-dead-letter-exchange`), listener retry sayısını sınırla; tüketilemeyen mesaj DLQ'ya düşer, insan bakar.
-
-**Kabul kriteri:** Bozuk gövdeli mesaj publish edilir; N denemeden sonra `order.created.dlq` kuyruğunda görünür, ana kuyruk boşalır ve sonraki mesaj normal işlenir.
-
-### 7.5 Event-driven teori bloğu — [teori] [~1 oturum] — **teach-back formatında**
-
-Format kararı (2026-09-10): bu blok anlatılmaz, **Emre anlatır**. Her madde için soru sorulur, cevap alınır, zorlayıcı follow-up ile zayıf yer bulunur, eksik kalan tamamlanır. Böylece teori tekrarı ve mülakat provası aynı oturumda hallolur. Çıkan zayıf noktalar `notes/kartlar.md`'ye kart olarak eklenir.
-
-- [ ] Senkron vs asenkron karar kriteri — hangi çağrı gerçekten beklemeli (cevabı akışı belirliyorsa), hangisi event'e dönüşebilir (yan etkiyse). Kendi iki örneğimiz: fiyat sorgusu (senkron) vs bildirim (async).
-- [ ] Kuyruk kavramları: producer/consumer, exchange + routing key (RabbitMQ) vs topic/partition/consumer group (Kafka).
-- [ ] Teslim garantileri: at-most-once / at-least-once / exactly-once; 7.3'te uygulanan dedup buraya bağlanır.
-- [ ] **Outbox pattern** — 7.1'de yaşadığımız atomiklik sorununun standart çözümü: event aynı transaction'da bir `outbox` tablosuna yazılır, ayrı bir süreç kuyruğa taşır. Mülakat favorisi.
-- [ ] **Saga pattern** — servis sınırını aşan iş akışında transaction; compensating action; 2PC neden kullanılmıyor.
-- [ ] **RabbitMQ vs Kafka** — task/command kuyruğu vs replay edilebilir event stream; retention ve consumer group farkı.
-- [ ] Eventual consistency'nin API/UX'e yansıması — "sipariş alındı, stok henüz düşmedi" durumunu frontend nasıl gösterir (FE deneyimiyle doğal köprü).
-
-### 7.6 — ~~opsiyonel uygulama~~ **kapsam dışı** (2026-09-10 budaması)
-
-`stock` kolonu + event ile stok düşme ve aynı akışı Kafka ile kurma **yapılmayacak**. Gerekçe: ikisi de zaten öğrenilmiş bir dersi ikinci kez ödemek. RabbitMQ vs Kafka farkı 7.5'te teori olarak konuşuluyor, kurulumunu tekrar etmenin mülakat getirisi yok.
 
 ---
 
