@@ -134,9 +134,11 @@ Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kal
 
 **Not al:** Senkron çağrı çağrılanın ayakta olmasını şart koşar; event yalnızca broker'ın ayakta olmasını şart koşar. Bağımlılık kaybolmaz, yer değiştirir.
 
-### 7.3 + 7.4 — tek oturumda hızlı geçilir
+### 7.3 + 7.4 — tek oturumda hızlı geçilir ✅ tamamlandı (2026-09-10)
 
 Budama kararı (2026-09-10): RabbitMQ temeli 7.1/7.2'de kuruldu, bu iki madde yeni kavram getirmiyor — asenkronun **bedelini** gösteriyor. Ayrı ayrı problem→yaklaşım→entegrasyon turu yapılmaz, tek turda sıkıştırılır.
+
+**Beklenmeyen ders:** `order.created.queue`'ya dead-letter argümanı eklerken her iki servis de `PRECONDITION_FAILED` ile düştü — queue Faz 7.1'den beri argümansız duruyordu ve RabbitMQ var olan bir queue'nun argümanlarını redeclare ile değiştirmeye izin vermiyor. Dev'de çözüm: queue silinip restart edildi. Kart: `notes/kartlar.md`.
 
 ### 7.3 Idempotency demo — [uygulama] [~30 dk]
 

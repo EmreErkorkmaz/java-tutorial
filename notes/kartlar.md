@@ -67,7 +67,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** Varsayılan olarak **sadece unchecked** (RuntimeException) exception'larda. Checked exception atılırsa transaction **commit edilir** — `rollbackFor` ile değiştirilir. Sık karıştırılan nokta budur.
 **Projede:** Faz 3 — yetim kayıt senaryosu integration testiyle önce kanıtlandı, sonra çözüldü.
 
-**S:** `[zayıf]` Proxy tabanlı annotation'ların self-invocation tuzağı nedir?
+**S:** `[zayıf]` Proxy tabanlı annotation'ların self-invocation tuzağı nedir? (2026-09-10 tur 2: JPA'ya atfedildi — mekanizma Spring AOP proxy'si, JPA'nın bununla hiçbir ilgisi yok)
 **C:** `@Transactional`/`@Cacheable`/`@Async` Spring proxy'si üzerinden çalışır. Aynı sınıf içinden `this.method()` çağırırsan proxy devreye girmez ve annotation **sessizce** hiç çalışmaz — hata da almazsın, en tehlikeli tarafı bu.
 **Çapa:** Kendi ofisinden kendine telefon etmek — santral (proxy) araya girmez, yani santralin yaptığı hiçbir şey olmaz.
 **Projede:** Faz 3'te `@Transactional` için görüldü; Faz 8.1'de `@Cacheable` için aynısı geçerli olacak.
@@ -94,7 +94,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Authentication ve authorization farkı, HTTP karşılıkları?
 **C:** Authentication = "sen kimsin" → **401**. Authorization = "bunu yapabilir misin" → **403**. 401 kimlik eksik/geçersiz, 403 kimlik var ama yetki yok.
 
-**S:** `[zayıf]` Encoding, hashing, encryption ve signature arasındaki fark? (2026-09-10: "JWT şifrelenmiş" cevabı geldi — imzalı ≠ şifreli karışıklığı)
+**S:** `[zayıf]` Encoding, hashing, encryption ve signature arasındaki fark? (2026-09-10 tur 2: imza/bearer kavramı netleşti, ama "base64 şifreleme mi" sorusu hâlâ var — encoding'in şifreleme olmadığı netleşmeli)
 **C:** **Encoding** (base64) geri döndürülebilir, güvenlik değil taşıma formatı — JWT payload'ı budur, herkes okuyabilir. **Hashing** (BCrypt) tek yönlü, şifre saklamak için. **Encryption** anahtarla geri döndürülebilir, veriyi gizlemek için. **Signature** (HMAC/RSA) bütünlük + kaynak doğrular ama **gizlilik sağlamaz**.
 **Çapa:** Encoding = şeffaf zarf · hashing = kıyma makinesi (geri döndüremezsin) · encryption = kasa (anahtarı olan açar) · signature = mühür (içeriği gizlemez, sahteliği gösterir).
 **Projede:** Faz 4 — BCrypt (hash) + HS256 (signature); JWT payload'ı base64, gizli veri konmaz.
@@ -215,7 +215,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **Çapa:** Telefon vs SMS. Telefonda karşı taraf açmazsa işin durur; SMS'te uykudaysa bile mesaj bekler.
 **Projede:** Faz 6 `ProductClient` (senkron) vs Faz 7 `order.created` (event).
 
-**S:** `[zayıf]` Broker koyarak bağımlılığı ortadan kaldırdın mı? (2026-09-10: mekanizma doğru anlatıldı, "yer değiştirdi" cümlesi eksikti)
+**S:** Broker koyarak bağımlılığı ortadan kaldırdın mı? (2026-09-10 tur 2: "RabbitMQ'ya taşındı" doğru cevaplandı, `[zayıf]` düştü — kalan nüans: notification-service down ile RabbitMQ'nun kendisi down olması farklı sonuç verir, biri 201+gecikmiş bildirim, diğeri 500+DB'de yetim sipariş)
 **C:** Hayır — **yer değiştirdin**. Senkron çağrı çağrılanın ayakta olmasını şart koşar; event yalnızca broker'ın ayakta olmasını şart koşar. Kazanç: bağımlılık sayısı azalmadı ama tek bir dayanıklı bileşende toplandı ve tüketicinin kesintisi üreticiyi etkilemiyor. Bedel: yeni operasyonel bileşen + eventual consistency.
 **Çapa:** Postane. Gönderen alıcıyı tanımaz, alıcı tatildeyse mektup kutuda bekler — ama postane yanarsa hiçbir şey akmaz.
 **Projede:** Faz 7.2 — `notification-service` durdurulmuşken sipariş 201 döndü, mesaj kuyrukta bekledi.
@@ -232,6 +232,11 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** Broker'lar pratikte **at-least-once** verir — ack kaybolursa aynı mesaj tekrar teslim edilir. Exactly-once'ı broker'dan beklemek yerine consumer'ı tekrara dayanıklı (idempotent) yazmak standart çözümdür: **at-least-once + idempotent consumer = pratikte exactly-once.**
 **Çapa:** Aynı mektubun iki kopyası gelir; üstündeki takip numarasına (`eventId`) bakıp "bunu zaten işledim" der, çöpe atarsın.
 **Projede:** Faz 7.1 — `OrderCreatedEvent.eventId` (UUID) bu iş için taşınıyor.
+
+**S:** Var olan bir queue'ya yeni bir argüman (örn. dead-letter-exchange) eklemek için ne yapman gerekir?
+**C:** Var olan bir queue'yu **redeclare ederek değiştiremezsin** — RabbitMQ bir queue'nun argümanlarını oluşturulduktan sonra sabit kabul eder. Aynı isimde farklı argümanlarla tekrar tanımlamaya çalışırsan `PRECONDITION_FAILED` hatası alırsın (hem üreten hem tüketen servis aynı hatayla düşer, ikisi de aynı queue'yu tanımlamaya çalıştığı için). Dev'de çözüm: queue'yu sil, yeniden oluşsun. Prod'da: canlı trafik varken silinemez, yeni isimli bir queue'ya (`v2`) geçiş yapılır.
+**Çapa:** Queue argümanları dövme (tattoo) gibi — sonradan "güncellenmez", ancak silinip yeniden yapılır.
+**Projede:** Faz 7.4 — `order.created.queue`'ya dead-letter argümanı eklenince hem `order-service` hem `notification-service` `PRECONDITION_FAILED` ile düştü, çünkü queue Faz 7.1'den beri argümansız duruyordu. `curl -X DELETE .../api/queues/%2f/order.created.queue` ile silinip restart edilince düzeldi.
 
 **S:** DLQ (dead letter queue) neden var?
 **C:** İşlenemeyen bir mesaj sonsuz retry'a girerse kuyruğu kilitler (poison message) ve **arkasındaki sağlam mesajlar da** işlenemez. Kuyruğa dead letter exchange bağlanır, N denemeden sonra mesaj DLQ'ya düşer, ana kuyruk akmaya devam eder, insan DLQ'ya bakar.
