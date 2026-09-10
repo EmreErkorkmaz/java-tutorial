@@ -67,7 +67,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** Varsayılan olarak **sadece unchecked** (RuntimeException) exception'larda. Checked exception atılırsa transaction **commit edilir** — `rollbackFor` ile değiştirilir. Sık karıştırılan nokta budur.
 **Projede:** Faz 3 — yetim kayıt senaryosu integration testiyle önce kanıtlandı, sonra çözüldü.
 
-**S:** Proxy tabanlı annotation'ların self-invocation tuzağı nedir?
+**S:** `[zayıf]` Proxy tabanlı annotation'ların self-invocation tuzağı nedir?
 **C:** `@Transactional`/`@Cacheable`/`@Async` Spring proxy'si üzerinden çalışır. Aynı sınıf içinden `this.method()` çağırırsan proxy devreye girmez ve annotation **sessizce** hiç çalışmaz — hata da almazsın, en tehlikeli tarafı bu.
 **Çapa:** Kendi ofisinden kendine telefon etmek — santral (proxy) araya girmez, yani santralin yaptığı hiçbir şey olmaz.
 **Projede:** Faz 3'te `@Transactional` için görüldü; Faz 8.1'de `@Cacheable` için aynısı geçerli olacak.
@@ -94,7 +94,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Authentication ve authorization farkı, HTTP karşılıkları?
 **C:** Authentication = "sen kimsin" → **401**. Authorization = "bunu yapabilir misin" → **403**. 401 kimlik eksik/geçersiz, 403 kimlik var ama yetki yok.
 
-**S:** Encoding, hashing, encryption ve signature arasındaki fark?
+**S:** `[zayıf]` Encoding, hashing, encryption ve signature arasındaki fark? (2026-09-10: "JWT şifrelenmiş" cevabı geldi — imzalı ≠ şifreli karışıklığı)
 **C:** **Encoding** (base64) geri döndürülebilir, güvenlik değil taşıma formatı — JWT payload'ı budur, herkes okuyabilir. **Hashing** (BCrypt) tek yönlü, şifre saklamak için. **Encryption** anahtarla geri döndürülebilir, veriyi gizlemek için. **Signature** (HMAC/RSA) bütünlük + kaynak doğrular ama **gizlilik sağlamaz**.
 **Çapa:** Encoding = şeffaf zarf · hashing = kıyma makinesi (geri döndüremezsin) · encryption = kasa (anahtarı olan açar) · signature = mühür (içeriği gizlemez, sahteliği gösterir).
 **Projede:** Faz 4 — BCrypt (hash) + HS256 (signature); JWT payload'ı base64, gizli veri konmaz.
@@ -116,7 +116,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Preflight isteği neyi tetikler?
 **C:** "Simple request" olmayan her istek: `Authorization` header'ı eklediğin veya `application/json` gövde gönderdiğin an tarayıcı önce `OPTIONS` ile izin sorar. Reddedilirse asıl istek hiç gönderilmez. `Access-Control-Max-Age` bu cevabı cache'ler.
 
-**S:** CSRF neden token tabanlı API'da yapısal olarak yok?
+**S:** `[zayıf]` CSRF neden token tabanlı API'da yapısal olarak yok?
 **C:** CSRF, tarayıcının kimliği (cookie) isteğe **otomatik eklemesinden** doğar. `Authorization` header'ı otomatik eklenmediği için saldırganın sitesinden gelen istek kimlik taşımaz — bu yüzden `csrf.disable()` bizim kurulumda güvenli. Cookie tabanlı oturuma dönülürse CSRF koruması **geri açılmalı**.
 **Projede:** Faz 4 — `SecurityConfig`.
 
@@ -215,14 +215,14 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **Çapa:** Telefon vs SMS. Telefonda karşı taraf açmazsa işin durur; SMS'te uykudaysa bile mesaj bekler.
 **Projede:** Faz 6 `ProductClient` (senkron) vs Faz 7 `order.created` (event).
 
-**S:** Broker koyarak bağımlılığı ortadan kaldırdın mı?
+**S:** `[zayıf]` Broker koyarak bağımlılığı ortadan kaldırdın mı? (2026-09-10: mekanizma doğru anlatıldı, "yer değiştirdi" cümlesi eksikti)
 **C:** Hayır — **yer değiştirdin**. Senkron çağrı çağrılanın ayakta olmasını şart koşar; event yalnızca broker'ın ayakta olmasını şart koşar. Kazanç: bağımlılık sayısı azalmadı ama tek bir dayanıklı bileşende toplandı ve tüketicinin kesintisi üreticiyi etkilemiyor. Bedel: yeni operasyonel bileşen + eventual consistency.
 **Çapa:** Postane. Gönderen alıcıyı tanımaz, alıcı tatildeyse mektup kutuda bekler — ama postane yanarsa hiçbir şey akmaz.
 **Projede:** Faz 7.2 — `notification-service` durdurulmuşken sipariş 201 döndü, mesaj kuyrukta bekledi.
 
 **S:** Event'i DB commit'inden önce mi sonra mı yayınlarsın?
-**C:** **Sonra.** Önce yayınlarsan, transaction rollback olduğunda var olmayan bir sipariş için bildirim gitmiş olur. Ama sonrasında da atomik değildir: save başarılı olup publish patlarsa sipariş var, event yok. Bu boşluğun standart çözümü outbox pattern.
-**Projede:** Faz 7.1 — `create()` `@Transactional` olmadığı için `save()` zaten commit edilmiş oluyor, publish ondan sonra.
+**C:** **Sonra.** Önce yayınlarsan, transaction rollback olduğunda var olmayan bir sipariş için bildirim gitmiş olur. Ama sonrasında da atomik değildir: save başarılı olup publish patlarsa sipariş var, event yok — **ve şu anki kodumuzda bunun üstüne kullanıcı da 500 alıyor**, çünkü `convertAndSend` etrafında catch yok ve `GlobalExceptionHandler`'da AMQP'ye özel bir handler tanımlı değil. Yani sipariş DB'de duruyor ama istemci "başarısız" sinyali görüyor — muhtemelen tekrar dener ve ikinci bir sipariş daha açar. Bu boşluğun standart çözümü outbox pattern.
+**Projede:** Faz 7.1 — `create()` `@Transactional` olmadığı için `save()` zaten commit edilmiş oluyor, publish ondan sonra. 2026-09-10'da canlı doğrulandı: RabbitMQ durdurulup sipariş oluşturuldu → istemci 500 aldı, `customer_order` tablosunda satır **vardı**.
 
 **S:** Outbox pattern nedir, hangi problemi çözer?
 **C:** "DB'ye yaz + kuyruğa yayınla" iki ayrı sistem olduğu için atomik değildir. Outbox'ta event, iş kaydıyla **aynı transaction içinde** bir `outbox` tablosuna yazılır (yani ya ikisi de olur ya hiçbiri); ayrı bir süreç bu tablodan okuyup kuyruğa taşır. Mülakat favorisi.
