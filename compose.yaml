@@ -1,4 +1,4 @@
-# Whole stack for local development: one Postgres, two services.
+# Whole stack for local development: one Postgres, RabbitMQ, three services.
 #
 #   docker compose up -d --build    build and start everything
 #   docker compose ps               health of each service
@@ -84,6 +84,26 @@ services:
       - "8081:8081"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  notification:
+    build: ./notification-service
+    container_name: notification-app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      # No dependency on "order" here - notification-service does not call it and does not
+      # need it running. It only needs the broker. That absence IS the Faz 7.2 point: stop
+      # this container and order creation keeps working.
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP"]
       interval: 10s
       timeout: 3s
       retries: 5

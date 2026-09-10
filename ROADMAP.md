@@ -119,7 +119,7 @@ Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kal
 
 **Kabul kriteri:** Sipariş oluşturulunca RabbitMQ UI'da (localhost:15672) kuyrukta 1 mesaj görünür; consumer henüz yokken bile sipariş 201 döner.
 
-### 7.2 `notification-service` consumer — [uygulama] [~1 oturum]
+### 7.2 `notification-service` consumer — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-10)
 
 **Yaklaşım:** Yeni Maven modülü ama **DB'siz** — sadece `spring-boot-starter-amqp` + `spring-boot-starter-web` (health için) + tek `@RabbitListener` sınıfı. Amaç üçüncü bir CRUD servisi yazmak değil, tüketici tarafını görmek.
 
