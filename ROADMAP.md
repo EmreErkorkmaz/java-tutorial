@@ -10,26 +10,28 @@ Java + Spring Boot ve genel backend/mimari öğrenme sürecinin ilerleme takibi.
 
 ---
 
-## Şu anki durum (2026-08-24)
+## Şu anki durum (2026-09-10)
 
 ```
 java-tutorial/
-├── product-service/   # 8080 — ürün kataloğu, auth (JWT üretimi), productdb
-├── order-service/     # 8081 — sipariş, product-service'e senkron REST, orderdb
-├── compose.yaml       # postgres + iki servis, üçü de healthcheck'li
-├── docker/init-db.sql # orderdb'yi oluşturur (yalnızca boş volume'de çalışır)
-└── notes/             # tamamlanmış fazların öğrenme notları
+├── product-service/      # 8080 — ürün kataloğu, auth (JWT üretimi), productdb
+├── order-service/        # 8081 — sipariş, product-service'e senkron REST, orderdb,
+│                         #        order.created event publisher
+├── notification-service/ # 8082 — DB'siz, tek @RabbitListener (event consumer)
+├── compose.yaml          # postgres + rabbitmq + üç servis, hepsi healthcheck'li
+├── docker/init-db.sql    # orderdb'yi oluşturur (yalnızca boş volume'de çalışır)
+└── notes/                # faz notları + kartlar.md (quiz kaynağı)
 ```
 
-Stack: Spring Boot 4.1.0, Java 21, Maven, PostgreSQL 18, Flyway, Spring Security (JWT HS256), Testcontainers, GitHub Actions (matrix ile iki servis paralel).
+Stack: Spring Boot 4.1.0, Java 21, Maven, PostgreSQL 18, Flyway, Spring Security (JWT HS256), RabbitMQ 4, Testcontainers, GitHub Actions (matrix ile üç servis paralel).
 
 | Komut | Ne yapar |
 |---|---|
 | `docker compose up -d --build` | Tüm yığın (kök dizinden) |
 | `./mvnw clean verify` | Tek servisin testleri (servis dizininden; Testcontainers kendi Postgres'ini açar) |
-| `product-service/api.http` | IntelliJ HTTP Client istek koleksiyonu |
+| `product-service/api.http`, `order-service/api.http` | IntelliJ HTTP Client istek koleksiyonu (Ultimate gerektirir; Community'de curl ile) |
 
-Test durumu: 23 `@Test` (13 product-service, 10 order-service), CI yeşil.
+Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-service'te henüz test yok), CI yeşil.
 
 | Faz | Durum |
 |---|---|
@@ -39,8 +41,8 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service), CI yeşil.
 | 4 Auth & güvenlik | ✅ [notes/faz4-guvenlik.md](notes/faz4-guvenlik.md) |
 | 5 Docker & DevOps | ✅ [notes/faz5-docker-devops.md](notes/faz5-docker-devops.md) |
 | 6 İkinci servis & senkron iletişim | ✅ [notes/faz6-ikinci-servis.md](notes/faz6-ikinci-servis.md) |
-| 7 Message queue & event-driven | ⬜ sıradaki |
-| 8 Mimari olgunluk & system design | ⬜ |
+| 7 Message queue & event-driven | 🔶 devam ediyor — 7.1 ✅, 7.2 ✅, sırada 7.3+7.4 (tek oturum), sonra 7.5 teach-back |
+| 8 Mimari olgunluk & system design | ⬜ — ağırlık "Mimari karar konuları" bloğunda |
 | 9 Portfolyo & mülakat hazırlığı | ⬜ |
 
 ## Çalışma tarzı (her oturumda geçerli)
@@ -64,6 +66,8 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service), CI yeşil.
 2. Bir önceki fazın devir notu — ilgili `notes/fazN-*.md` dosyasının **ilk bölümü**: `sed -n '1,25p' notes/faz6-ikinci-servis.md`
 3. Gerisi ihtiyaç halinde: bir karara "neden böyle yapmıştık" diye takılınca ilgili `notes/` dosyasının tamamı, koda takılınca dosyanın kendisi. Baştan hepsini okuma.
 
+**Oturum şekli (2026-09-10'dan itibaren):** açılış quiz'i (3 kart) → mimari çapa → ana blok → kapanış teach-back'i. Ayrıntısı [CLAUDE.md](CLAUDE.md#oturum-şablonu-2026-09-10dan-itibaren)'de; quiz kaynağı [notes/kartlar.md](notes/kartlar.md).
+
 **Faz sonunda yaz (devir notu — bir sonraki oturumun tek girdisi):**
 İlgili `notes/fazN-*.md` dosyasının başına, başlığın hemen altına `## Faz özeti — devir notu` bölümü. Beş başlık, her biri 1-3 cümle:
 - **Ne yapıldı** — maddeler değil, tek paragraf
@@ -73,9 +77,10 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service), CI yeşil.
 - **Sonraki faza taşınan bağlam** — bir sonraki fazın hangi maddesine bağlanıyor
 
 **Faz sonu checklist:**
-- [ ] `./mvnw clean verify` iki (üç) serviste de yeşil
+- [ ] `./mvnw clean verify` üç serviste de yeşil
 - [ ] ROADMAP'te checkbox'lar ve faz tablosu güncel
 - [ ] Öğrenilenler `notes/fazN-*.md` içine yazıldı (ROADMAP şişirilmedi), devir notu güncellendi
+- [ ] Fazın "Not al" kartları `notes/kartlar.md`'ye eklendi (`[zayıf]` etiketleri güncel)
 - [ ] `notes/README.md` satırı güncel
 - [ ] Commit atıldı
 
@@ -129,6 +134,10 @@ Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kal
 
 **Not al:** Senkron çağrı çağrılanın ayakta olmasını şart koşar; event yalnızca broker'ın ayakta olmasını şart koşar. Bağımlılık kaybolmaz, yer değiştirir.
 
+### 7.3 + 7.4 — tek oturumda hızlı geçilir
+
+Budama kararı (2026-09-10): RabbitMQ temeli 7.1/7.2'de kuruldu, bu iki madde yeni kavram getirmiyor — asenkronun **bedelini** gösteriyor. Ayrı ayrı problem→yaklaşım→entegrasyon turu yapılmaz, tek turda sıkıştırılır.
+
 ### 7.3 Idempotency demo — [uygulama] [~30 dk]
 
 **Problem:** Broker'lar pratikte **at-least-once** teslim eder: ack kaybolursa aynı mesaj tekrar gelir. Consumer "bildirim gönder" yapıyorsa kullanıcı iki mail alır.
@@ -147,7 +156,9 @@ Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kal
 
 **Kabul kriteri:** Bozuk gövdeli mesaj publish edilir; N denemeden sonra `order.created.dlq` kuyruğunda görünür, ana kuyruk boşalır ve sonraki mesaj normal işlenir.
 
-### 7.5 Event-driven teori bloğu — [teori] [~1 oturum]
+### 7.5 Event-driven teori bloğu — [teori] [~1 oturum] — **teach-back formatında**
+
+Format kararı (2026-09-10): bu blok anlatılmaz, **Emre anlatır**. Her madde için soru sorulur, cevap alınır, zorlayıcı follow-up ile zayıf yer bulunur, eksik kalan tamamlanır. Böylece teori tekrarı ve mülakat provası aynı oturumda hallolur. Çıkan zayıf noktalar `notes/kartlar.md`'ye kart olarak eklenir.
 
 - [ ] Senkron vs asenkron karar kriteri — hangi çağrı gerçekten beklemeli (cevabı akışı belirliyorsa), hangisi event'e dönüşebilir (yan etkiyse). Kendi iki örneğimiz: fiyat sorgusu (senkron) vs bildirim (async).
 - [ ] Kuyruk kavramları: producer/consumer, exchange + routing key (RabbitMQ) vs topic/partition/consumer group (Kafka).
@@ -157,10 +168,9 @@ Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kal
 - [ ] **RabbitMQ vs Kafka** — task/command kuyruğu vs replay edilebilir event stream; retention ve consumer group farkı.
 - [ ] Eventual consistency'nin API/UX'e yansıması — "sipariş alındı, stok henüz düşmedi" durumunu frontend nasıl gösterir (FE deneyimiyle doğal köprü).
 
-### 7.6 Opsiyonel — varsayılan: yapılmaz
+### 7.6 — ~~opsiyonel uygulama~~ **kapsam dışı** (2026-09-10 budaması)
 
-- [ ] **[opsiyonel]** `product-service`'te `stock` kolonu (V5 migration) + event ile stok düşme. Şu an `product` tablosunda stok yok, ek migration gerektiriyor.
-- [ ] **[opsiyonel]** Aynı akışı Kafka ile kurup karşılaştırma.
+`stock` kolonu + event ile stok düşme ve aynı akışı Kafka ile kurma **yapılmayacak**. Gerekçe: ikisi de zaten öğrenilmiş bir dersi ikinci kez ödemek. RabbitMQ vs Kafka farkı 7.5'te teori olarak konuşuluyor, kurulumunu tekrar etmenin mülakat getirisi yok.
 
 ---
 
@@ -210,16 +220,17 @@ Kapsam kararı: ince bir uygulama dilimi (7.1-7.4) yapılır, gerisi teoride kal
 
 **Kabul kriteri:** Tek porttan (`:8090`) hem `/api/products/**` hem `/api/orders/**` çalışıyor; gateway'de tanımlı rate limit aşılınca 429, servisler doğrudan çağrıldığında kendi kuralları hâlâ geçerli.
 
-### 8.4 Dağıtık sistem teorisi — [teori]
+### 8.4 Dağıtık sistem teorisi — [teori] (2026-09-10'da budandı)
 
-- [ ] Service discovery — Eureka vs Docker/K8s DNS; bizim `PRODUCT_SERVICE_BASE_URL` yaklaşımımız ne zaman yetmez.
-- [ ] Merkezi konfigürasyon — Spring Cloud Config vs env/secret tabanlı basit yaklaşım.
 - [ ] CAP teoremi, eventual consistency, idempotency, split-brain.
 - [ ] Klasik system design egzersizleri (URL shortener, rate limiter, feed, bildirim sistemi) — çizim + trade-off tartışması.
+- [ ] Service discovery + merkezi konfigürasyon — **tek paragraf**, ayrı madde değil: bizim `PRODUCT_SERVICE_BASE_URL` yaklaşımı (env variable + compose DNS) küçük ölçekte yeterli; Eureka/Spring Cloud Config dinamik instance sayısı ve çok ortamlı deploy olunca gerekir. Kavramı bilmek yeter, kurmak Faz 9 için gereksiz.
 
-### Mimari karar konuları (solutions architecture yönü)
+### Mimari karar konuları — **Faz 8'in ana malzemesi**, kuyruğu değil
 
-Her biri "hangi durumda hangisi ve neden" formatında, **bu projedeki somut bir karara bağlanarak**.
+Öncelik kararı (2026-09-10): solutions-architecture hedefi için **mülakat getirisi en yüksek blok burasıdır**. 8.1-8.3'ün uygulama maddeleri bu tartışmaların somut çapası olarak var; asıl iş bu listede.
+
+Format: **teach-back** — her madde bir mülakat sorusu gibi sorulur, Emre cevaplar, zorlayıcı follow-up gelir, eksik kalan tamamlanır ve kart olarak `notes/kartlar.md`'ye düşer. Her biri "hangi durumda hangisi ve neden" formatında, **bu projedeki somut bir karara bağlanarak**.
 
 - [ ] **Runtime/dil seçimi** — iş yükünün şekli belirler: I/O-yoğun + çok bağlantı → Node (event loop); CPU-yoğun veya ağır domain/transaction → Go/Java/Rust. JVM warm-up serverless'ta maliyet, Go tek binary ile container'da avantaj. Pratikte ekip bilgisi ve ekosistem teknik farktan baskın.
 - [ ] **Eşzamanlılık modelleri** — tek thread + event loop vs thread-per-request; bloklamanın maliyeti; thread-safety (Java'da gerekli, Node'da değil); Java 21 virtual threads farkı nasıl kapatıyor. → Bağlanacağı karar: Faz 6'daki `@ConcurrencyLimit(20)` bulkhead'i.
@@ -235,7 +246,7 @@ Her biri "hangi durumda hangisi ve neden" formatında, **bu projedeki somut bir 
 ## Faz 9 — Portfolyo projesi & mülakat hazırlığı
 
 - [ ] **9.1 Fullstack portfolyo projesi** — React/Next.js frontend + Spring Boot backend, Dockerize **ve deploy edilmiş** (Railway / Fly.io / Render; image registry'e push burada yapılır — Faz 5'ten devreden madde). README'de mimari kararlar yazılı. Comment yoğunluğu bu repodakinden düşük tutulur (production repo tarzı).
-- [ ] **9.2 Java'da DSA pratiği** — Collections API'yi (List/Map/Set/Stream) akıcı kullanacak kadar problem çözümü.
+- [ ] **9.2 Java'da Collections akıcılığı** — (2026-09-10'da daraltıldı) hedef geniş DSA çalışması **değil**: List/Map/Set/Stream API'yi mülakatta duraksamadan kullanabilmek. Klasik algoritma seti kapsam dışı; hedef roller için getirisi düşük, zamanı 8.x mimari tartışmalarına gidiyor.
 - [ ] **9.3 Java/Spring mülakat soruları** — JVM (heap/stack, GC), `equals`/`hashCode`, immutability, concurrency temelleri (thread, `synchronized`, `CompletableFuture`), Spring bean lifecycle & scope'lar.
 - [ ] **9.4 System design mock mülakatları.**
 - [ ] **9.5 Behavioral** — FE deneyimini fullstack anlatısına dönüştürme (design system, PWA, yüksek trafik hikâyeleri).

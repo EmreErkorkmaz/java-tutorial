@@ -8,8 +8,11 @@ kısım odur (`sed -n '1,25p' notes/faz6-ikinci-servis.md`), dosyanın tamamı d
 
 Güncel durum ve kalan işler: [ROADMAP.md](../ROADMAP.md)
 
+**[kartlar.md](kartlar.md) ayrı bir iş görür:** faz notları *ne yaptığımızı* anlatır, kartlar *kendini test etmek* içindir. Kağıt defterin aranabilir kopyası; her oturum açılışındaki 3 soruluk quiz oradan seçilir.
+
 | Dosya | İçerik |
 |---|---|
+| [kartlar.md](kartlar.md) | **Mülakat kartları** — tüm fazlardan soru→cevap→çapa→projedeki karşılığı. Quiz kaynağı, `[zayıf]` etiketiyle tekrar takibi |
 | [faz1-spring-temelleri.md](faz1-spring-temelleri.md) | Ortam kurulumu, katmanlı mimari, DI, JPA entity, DTO, validation, GlobalExceptionHandler, JVM/JIT notu |
 | [faz2-test.md](faz2-test.md) | Unit test (Mockito), `@WebMvcTest` + MockMvc, integration test, Spring Boot 4 test API değişiklikleri |
 | [faz3-veritabani.md](faz3-veritabani.md) | Postgres + Docker, Flyway, ilişkiler, N+1 ve `@EntityGraph`, index + `EXPLAIN ANALYZE`, transaction, OSIV, pagination, Testcontainers |

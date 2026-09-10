@@ -11,6 +11,23 @@ Java + Spring Boot öğrenme projesi (Emre'nin fullstack geçişi). İki servis,
 
 Her faz kendi oturumunda çalışılır; geçmiş sohbet taşınmaz, bağlam devir notundan gelir.
 
+## Oturum şablonu (2026-09-10'dan itibaren)
+
+Sebep: girdi tarafı güçlüydü ama geri çağırma (retrieval) hiç yoktu — notlarda tek soru yok, eski fazlara hiç dönülmüyordu. Öğrenilen şeyin kalması için oturum iki uçtan kapatılır.
+
+| Aşama | Süre | Ne olur |
+|---|---|---|
+| **Açılış quiz'i** | ~5 dk | [notes/kartlar.md](notes/kartlar.md)'den 3 soru: biri son fazdan, biri ortadan, biri eskiden. Varsa `[zayıf]` kartlar önce sorulur. Sözlü ve kısa; bilinemeyen kart `[zayıf]` işaretlenir |
+| **Mimari çapa** | 1-2 cümle | Bugünkü işin büyük resimde nereye oturduğu. Hat: tek servis → **senkron sınır** (Faz 6) → **asenkron sınır** (Faz 7) → **dağıtık sistemi işletmek** (Faz 8) |
+| **Ana blok** | oturumun çoğu | Yeni iş. Tanıdık bir pattern'in devamıysa problem→yaklaşım→entegrasyon **tek turda sıkıştırılır**, ayrı ayrı tur yapılmaz |
+| **Teach-back** | ~5-10 dk | "Bunu bir mülakatçıya anlat." Emre anlatır, sen 1-2 zorlayıcı follow-up sorarsın. Hand-wavy cevabı geçirme — gerçek mülakatçı da geçirmez. Takılınan yer yeni kart olur |
+
+**Yan konular tek satır çözümle geçilir.** IDE lisansı, git config, import karışıklığı, Docker artığı, tooling hatası: kök sebep + tek satırlık düzeltme. Mülakatta gerçekten sorulacak bir tuzak değilse teori anlatılmaz — bu tür yan yollar oturumun asıl konusunu yiyor.
+
+**Kart bakımı sende:** oturumda "Not al" dediğin her şey `notes/kartlar.md`'ye eklenir (Emre elle de yazıyor, ama dijital kopyayı sen tutuyorsun — aradığını bulamamak eski sorundu). Kart formatı: `**S:**` / `**C:**` / `**Çapa:**` (varsa) / `**Projede:**`.
+
+**Kanonik benzetme:** bir kavram için bir benzetme, `kartlar.md`'deki `**Çapa:**` satırında. Her seferinde yeni metafor uydurmak yapışmayı bozar; aynı kavram her anlatımda aynı benzetmeyle anılır.
+
 ## Çalışma kuralları
 
 - **Kodu Emre yazar.** Sohbette kısa comment'li, olduğu gibi yapıştırılabilir snippet ver; dosyayı sen yazma. İstisna: config, tooling, docs, mekanik düzeltme (dosya taşıma, tek satır fix).
