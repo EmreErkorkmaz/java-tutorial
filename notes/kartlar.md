@@ -287,3 +287,13 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **S:** Distributed tracing ne çözer, sampling oranı neden bir karar?
 **C:** Bir istek birden fazla servise yayıldığında ayrı log dosyalarını elle eşleştirmek imkânsızlaşır; her istek bir `traceId` alır ve bu id servis sınırını header ile geçer, span'lar tek ağaç olarak görülür. Sampling bir maliyet kararıdır: %100 üretim yükünü ve depolamayı ciddi artırır, %1 nadir hatayı kaçırır.
 **Çapa:** Kargo takip numarası — aynı numara her durakta görünür.
+**Projede:** Faz 8.2 — Zipkin'de canlı doğrulandı: tek `traceId`, üç servis. `product-service`'in span'i `order-service`'in `http get` span'inin (senkron, Faz 6), `notification-service`'in span'i `order-service`'in publish span'inin (asenkron, Faz 7 — RabbitMQ observation açılarak) doğrudan çocuğu.
+
+**S:** Spring'in yönettiği bir nesne (`RestClient.Builder` gibi) ile kendi kurduğun bir nesne (`RestClient.builder()`) arasındaki fark tracing'i nasıl etkiler?
+**C:** Boot, tracing/observation desteğini yalnızca **kendi yönettiği** (context'e bean olarak kayıtlı) nesnelere otomatik özellik ekleyebilir — `RestClient.Builder`'ı inject edip kullanırsan Boot ona bir `ObservationRestClientCustomizer` uygular, bu da her giden isteğe `traceId`/`spanId` header'ını otomatik ekler. Statik `RestClient.builder()` ile elle kurduğun bir istemci Spring'in hiç haberi olmayan bir nesnedir — hiçbir otomatik özellik ona uygulanmaz, trace zinciri tam o noktada kopar.
+**Çapa:** Aynı self-invocation dersi, farklı kılıkta: Spring sadece **kendi elinden geçen** nesneleri geliştirebilir, arkadan gizlice kurduğun bir nesneye hiçbir şey ekleyemez.
+**Projede:** Faz 8.2 — `RestClientConfig.java`, `RestClient.builder()` → injected `RestClient.Builder`. Düzeltilmeden önce `product-service`'e giden çağrılar trace'e hiç girmiyordu.
+
+**S:** Aynı Spring Boot modülü (örn. "web" desteği) her zaman aynı bağımlılıkla mı gelir?
+**C:** Hayır — Boot 4.1'de sunucu tarafı (`spring-boot-starter-webmvc`, gelen isteği karşılamak) ve istemci tarafı (`spring-boot-starter-restclient`, giden istek atmak) **ayrı starter'lar**. Eski sürümlerde (Boot 3.x) `RestClient.Builder`'ın auto-configure edildiği kod genel autoconfigure jar'ının içindeydi, herhangi bir web starter'ı ile bedavaydı. Boot 4.1 bunu ayrıştırdı: sadece sunucu olan bir servisin istemci tarafı autoconfig'e ihtiyacı yok, tersi de doğru.
+**Projede:** Faz 8.2 — `order-service`'e `spring-boot-starter-restclient` eklenmeden `RestClient.Builder` bean'i context'te hiç yoktu, uygulama **hiç açılmadı** (`NoSuchBeanDefinitionException` yerine `UnsatisfiedDependencyException` — inject edilecek bean'in kendisi yoktu).

@@ -42,7 +42,7 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 | 5 Docker & DevOps | ✅ [notes/faz5-docker-devops.md](notes/faz5-docker-devops.md) |
 | 6 İkinci servis & senkron iletişim | ✅ [notes/faz6-ikinci-servis.md](notes/faz6-ikinci-servis.md) |
 | 7 Message queue & event-driven | ✅ [notes/faz7-event-driven.md](notes/faz7-event-driven.md) |
-| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1 ✅, sırada 8.2 (tracing) — ağırlık "Mimari karar konuları" bloğunda |
+| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1 ✅, 8.2 ✅, sırada 8.3 (gateway) — ağırlık "Mimari karar konuları" bloğunda |
 | 9 Portfolyo & mülakat hazırlığı | ⬜ |
 
 ## Çalışma tarzı (her oturumda geçerli)
@@ -126,7 +126,9 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 
 **Not al:** Cache invalidation zor olduğu için değil, **doğruluk sınırı belirsiz** olduğu için zor: ne kadar bayat veri kabul edilebilir sorusunun cevabı teknik değil, ürün kararıdır.
 
-### 8.2 Distributed tracing — [uygulama] [~1 oturum]
+### 8.2 Distributed tracing — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-11)
+
+**Sonuç:** Kapsam üçe (order+product+notification) genişletildi — Spring AMQP'nin observation desteği (`spring.rabbitmq.template.observation-enabled` / `...listener.simple.observation-enabled`) sayesinde tek `traceId` hem senkron HTTP sınırını (Faz 6) hem asenkron RabbitMQ sınırını (Faz 7) geçti; Zipkin'de doğrulandı: `product-service`'in span'i `order-service`'in `http get` span'inin, `notification-service`'in span'i `order-service`'in publish span'inin doğrudan çocuğu. Yol boyunca roadmap'in orijinal planından üç fark çıktı: (1) tek dependency yeter (`spring-boot-starter-zipkin`, ayrı `micrometer-tracing-bridge-brave`+`zipkin-reporter-brave` gerekmiyor), (2) Zipkin endpoint property'si `management.tracing.export.zipkin.endpoint` (eski `management.zipkin.tracing.endpoint` değil), (3) log'a `traceId`/`spanId` otomatik ekleniyor, elle pattern değiştirmeye gerek yok. Ayrıca gerçek bir eksik bağımlılık çıktı: `spring-boot-starter-webmvc` (sunucu) `RestClient.Builder`'ın auto-configure edildiği modülü (`spring-boot-starter-restclient`, istemci) içermiyor — `order-service` context'i hiç açılamadı, eklenince düzeldi. Kartlar: `notes/kartlar.md`.
 
 **Problem:** Bir sipariş isteği iki servise yayılıyor. Yavaşlık veya hata olduğunda iki ayrı log dosyasına bakıp isteği elle eşleştirmek gerekiyor — üçüncü servis (notification) eklendikten sonra bu iyice imkânsız.
 

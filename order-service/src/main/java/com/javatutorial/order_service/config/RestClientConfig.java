@@ -17,7 +17,7 @@ import java.time.Duration;
 public class RestClientConfig {
 
     @Bean
-    RestClient productRestClient(@Value("${product-service.base-url}") String baseUrl) {
+    RestClient productRestClient(RestClient.Builder builder, @Value("${product-service.base-url}") String baseUrl) {
         // Timeouts are the single most important setting here. Without them a hung
         // dependency holds this service's threads until they run out - one slow service
         // takes down the ones calling it.
@@ -28,9 +28,8 @@ public class RestClientConfig {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(Duration.ofSeconds(3)); // time to wait for the response
 
-        return RestClient.builder().baseUrl(baseUrl).requestFactory(factory)
-                .requestInterceptor(bearerTokenPropagation())
-                .build();
+        // return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).requestInterceptor(bearerTokenPropagation()).build();
+        return builder.baseUrl(baseUrl).requestFactory(factory).requestInterceptor(bearerTokenPropagation()).build();
     }
 
     // Forwards the caller's already-verified token downstream, so product-service sees the
