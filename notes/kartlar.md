@@ -67,7 +67,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** Varsayılan olarak **sadece unchecked** (RuntimeException) exception'larda. Checked exception atılırsa transaction **commit edilir** — `rollbackFor` ile değiştirilir. Sık karıştırılan nokta budur.
 **Projede:** Faz 3 — yetim kayıt senaryosu integration testiyle önce kanıtlandı, sonra çözüldü.
 
-**S:** `[zayıf]` Proxy tabanlı annotation'ların self-invocation tuzağı nedir? (2026-09-10 tur 2: JPA'ya atfedildi — mekanizma Spring AOP proxy'si, JPA'nın bununla hiçbir ilgisi yok)
+**S:** Proxy tabanlı annotation'ların self-invocation tuzağı nedir? (2026-09-11'de doğru cevaplandı: proxy invoke olmuyor, hatasız sessizce çalışmıyor — `[zayıf]` düştü)
 **C:** `@Transactional`/`@Cacheable`/`@Async` Spring proxy'si üzerinden çalışır. Aynı sınıf içinden `this.method()` çağırırsan proxy devreye girmez ve annotation **sessizce** hiç çalışmaz — hata da almazsın, en tehlikeli tarafı bu.
 **Çapa:** Kendi ofisinden kendine telefon etmek — santral (proxy) araya girmez, yani santralin yaptığı hiçbir şey olmaz.
 **Projede:** Faz 3'te `@Transactional` için görüldü; Faz 8.1'de `@Cacheable` için aynısı geçerli olacak.
@@ -94,7 +94,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Authentication ve authorization farkı, HTTP karşılıkları?
 **C:** Authentication = "sen kimsin" → **401**. Authorization = "bunu yapabilir misin" → **403**. 401 kimlik eksik/geçersiz, 403 kimlik var ama yetki yok.
 
-**S:** `[zayıf]` Encoding, hashing, encryption ve signature arasındaki fark? (2026-09-10 tur 2: imza/bearer kavramı netleşti, ama "base64 şifreleme mi" sorusu hâlâ var — encoding'in şifreleme olmadığı netleşmeli)
+**S:** Encoding, hashing, encryption ve signature arasındaki fark? (2026-09-11'de doğru cevaplandı: "base64 şifreleme değil, format; imza bütünlüğü doğrular" — `[zayıf]` düştü)
 **C:** **Encoding** (base64) geri döndürülebilir, güvenlik değil taşıma formatı — JWT payload'ı budur, herkes okuyabilir. **Hashing** (BCrypt) tek yönlü, şifre saklamak için. **Encryption** anahtarla geri döndürülebilir, veriyi gizlemek için. **Signature** (HMAC/RSA) bütünlük + kaynak doğrular ama **gizlilik sağlamaz**.
 **Çapa:** Encoding = şeffaf zarf · hashing = kıyma makinesi (geri döndüremezsin) · encryption = kasa (anahtarı olan açar) · signature = mühür (içeriği gizlemez, sahteliği gösterir).
 **Projede:** Faz 4 — BCrypt (hash) + HS256 (signature); JWT payload'ı base64, gizli veri konmaz.
@@ -224,8 +224,8 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** **Sonra.** Önce yayınlarsan, transaction rollback olduğunda var olmayan bir sipariş için bildirim gitmiş olur. Ama sonrasında da atomik değildir: save başarılı olup publish patlarsa sipariş var, event yok — **ve şu anki kodumuzda bunun üstüne kullanıcı da 500 alıyor**, çünkü `convertAndSend` etrafında catch yok ve `GlobalExceptionHandler`'da AMQP'ye özel bir handler tanımlı değil. Yani sipariş DB'de duruyor ama istemci "başarısız" sinyali görüyor — muhtemelen tekrar dener ve ikinci bir sipariş daha açar. Bu boşluğun standart çözümü outbox pattern.
 **Projede:** Faz 7.1 — `create()` `@Transactional` olmadığı için `save()` zaten commit edilmiş oluyor, publish ondan sonra. 2026-09-10'da canlı doğrulandı: RabbitMQ durdurulup sipariş oluşturuldu → istemci 500 aldı, `customer_order` tablosunda satır **vardı**.
 
-**S:** `[zayıf]` Outbox pattern nedir, hangi problemi çözer? (2026-09-10 teach-back: "orphan order" semptomunu doğru teşhis etti ama çözümün adını hatırlayamadı)
-**C:** "DB'ye yaz + kuyruğa yayınla" iki ayrı sistem olduğu için atomik değildir. Outbox'ta event, iş kaydıyla **aynı transaction içinde** bir `outbox` tablosuna yazılır (yani ya ikisi de olur ya hiçbiri); ayrı bir süreç (poller veya CDC/Debezium) bu tablodan yayınlanmamış satırları okuyup kuyruğa taşır. Kritik nokta: mekanizma reaktif değil — "yayınlama başarısız oldu mu" diye kontrol etmez, sadece "tabloda hâlâ yayınlanmamış satır var mı" sorar; satır durdukça (ilk deneme hiç yapılmamış olsun ya da patlamış olsun fark etmez) tekrar dener. Mülakat favorisi.
+**S:** `[zayıf]` Outbox pattern nedir, hangi problemi çözer? (üç turdur takılınıyor: 2026-09-10 teach-back'te ismi hatırlanmadı, 2026-09-11'de isim geldi ama mekanizma hâlâ tersten kuruldu — "önce dene, başarısız olursa tabloya yaz" dendi; doğrusu "önce koşulsuz tabloya yaz, publish denemesi HİÇ yapılmadan önce")
+**C:** "DB'ye yaz + kuyruğa yayınla" iki ayrı sistem olduğu için atomik değildir. Outbox'ta event, iş kaydıyla **aynı transaction içinde, publish hiç denenmeden önce, koşulsuz** bir `outbox` tablosuna yazılır (yani ya ikisi de olur ya hiçbiri). Ayrı bir süreç (poller veya CDC/Debezium) bu tablodan yayınlanmamış satırları okuyup kuyruğa taşır. Kritik nokta: mekanizma reaktif değil — "yayınlama başarısız oldu mu" diye kontrol etmez, sadece "tabloda hâlâ yayınlanmamış satır var mı" sorar; satır durdukça (ilk deneme hiç yapılmamış olsun ya da patlamış olsun fark etmez) tekrar dener. **Sık yapılan hata:** "publish başarısız olursa tabloya yaz" demek — bu, publish denemesi ile tabloya yazma arasında hâlâ bir boşluk bırakır, tam çözülmesi gereken problemi geri getirir. Mülakat favorisi.
 **Çapa:** Çıkış sepeti. Mektubu kaydın yanına, aynı çekmeceye koyarsın; kurye sonra gelip alır. "Kayıt var ama mektup yok" durumu oluşmaz.
 
 **S:** Teslim garantileri: at-most-once, at-least-once, exactly-once?
@@ -270,9 +270,19 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **S:** Cache-aside nedir, alternatifine göre neden seçilir?
 **C:** Uygulama önce cache'e bakar, yoksa DB'den okur ve cache'e yazar. Write-through'a göre daha basit ve cache çökse bile sistem çalışır; bedeli ilk isteğin yavaş olması (cold miss) ve **invalidation sorumluluğunun uygulamada kalması**.
 **Çapa:** Buzdolabı vs market. Önce dolaba bakarsın, yoksa markete gidip dönüşte dolaba koyarsın. Bayat kalma riski invalidation problemidir.
+**Projede:** Faz 8.1 — `ProductService.findResponseById()` `@Cacheable`, `update()`/`delete()` `@CacheEvict`. Canlı ölçüldü: cache miss 1 sorgu, sonraki 3 istek 0 sorgu; `PUT` sonrası ilk `GET` yine 1 sorgu (evict doğru çalıştı, bayat veri dönmedi).
 
 **S:** Cache invalidation neden zor?
 **C:** Teknik olarak zor olduğu için değil, **doğruluk sınırı belirsiz** olduğu için: "ne kadar bayat veri kabul edilebilir" sorusunun cevabı teknik değil ürün kararıdır.
+
+**S:** Redis'te çok fazla key birikip belleği taşırmasını nasıl engellersin?
+**C:** İki katman: **TTL** (her key'in bir ömrü olur, süresiz cache yok) ve **`maxmemory` + eviction policy** — Redis'e "en fazla şu kadar bellek kullan, dolunca şu key'i sil" denir. TTL'li key'lerin olduğu bir sistemde doğru politika `volatile-lru` (TTL'i olanlar arasında en az kullanılanı sil) ya da `allkeys-lru` (hepsi arasında). Bu ekibin/ops'un konfigüre ettiği bir production kararı, kod değil.
+**Projede:** Faz 8.1 — `redis:8-alpine` şu an varsayılan (sınırsız) ile çalışıyor; `command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru` eklenerek sınırlanabilir.
+
+**S:** Bir DTO'yu (özellikle Java record) Redis'te cache'lerken karşılaşabileceğin sinsi bir serialization tuzağı nedir?
+**C:** Genel amaçlı bir JSON serializer (örn. `GenericJacksonJsonRedisSerializer`), farklı tipleri aynı cache'te tutabilmek için tip bilgisini JSON'a gömer — ama bu gömme genelde sadece **non-final** sınıflar için çalışır (`DefaultTyping.NON_FINAL`). Java **record'ları implicit olarak `final`**'dır, yani tip bilgisi hiç gömülmez. Redis'ten geri okurken Jackson elindeki JSON'ı hangi sınıfa çevireceğini bilemez, generic bir `Map` döndürür — sonraki cast `ClassCastException` ile patlar.
+**Çapa:** Genel serializer, adresi olmayan bir kutuya "kime ait bilmiyorum ama JSON bu" yazmak gibi — final sınıfta o adres etiketi hiç yapıştırılmıyor.
+**Projede:** Faz 8.1 — canlı yaşandı: `ProductResponse` (record) `GenericJacksonJsonRedisSerializer` ile cache'lenince ikinci okuma `ClassCastException` verdi. Çözüm: tek, bilinen bir tip için polymorphism'e hiç gerek yok — `JacksonJsonRedisSerializer<ProductResponse>` (tipi constructor'da açıkça belirten, non-generic serializer) kullanıldı.
 
 **S:** Distributed tracing ne çözer, sampling oranı neden bir karar?
 **C:** Bir istek birden fazla servise yayıldığında ayrı log dosyalarını elle eşleştirmek imkânsızlaşır; her istek bir `traceId` alır ve bu id servis sınırını header ile geçer, span'lar tek ağaç olarak görülür. Sampling bir maliyet kararıdır: %100 üretim yükünü ve depolamayı ciddi artırır, %1 nadir hatayı kaçırır.

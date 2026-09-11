@@ -1,11 +1,14 @@
 package com.javatutorial.product_service.service;
 
+import com.javatutorial.product_service.dto.ProductResponse;
 import com.javatutorial.product_service.exception.CategoryNotFoundException;
 import com.javatutorial.product_service.exception.ProductNotFoundException;
 import com.javatutorial.product_service.model.Category;
 import com.javatutorial.product_service.model.Product;
 import com.javatutorial.product_service.repository.CategoryRepository;
 import com.javatutorial.product_service.repository.ProductRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,14 @@ public class ProductService {
                 .orElseThrow(() -> new ProductNotFoundException(id));
     }
 
+    // Cached here, not on findById() - findById() returns the entity (lazy category
+    // proxy), which is not JSON-serializable as-is. This wraps it in the DTO first,
+    // so what actually lands in Redis is a plain, stable shape.
+    @Cacheable(cacheNames = "products", key = "#id")
+    public ProductResponse findResponseById(Long id) {
+        return ProductResponse.from(findById(id));
+    }
+
     @Transactional(readOnly = true)
     public List<Product> findAllByIds(List<Long> ids) {
         // An unbounded id list lets one request pull the whole table. The cap is both a
@@ -52,6 +63,7 @@ public class ProductService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = "products", key = "#id")
     public Product update(Long id, String name, BigDecimal price, Long categoryId) {
         Product existing = findById(id);
         existing.setName(name);
@@ -67,9 +79,11 @@ public class ProductService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = "products", key = "#id")
     public void delete(Long id) {
         productRepository.deleteById(id);
     }
+
     // One business operation, two writes. Each save() currently commits in its own
     // transaction, so a failure in the second one leaves the first one behind.
     @Transactional // both saves now share one transaction: either both land or neither does

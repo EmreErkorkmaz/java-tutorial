@@ -8,6 +8,7 @@ import com.javatutorial.product_service.service.ProductService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest; // Boot 4 package (moved from boot.test.autoconfigure.web.servlet)
+import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -40,6 +41,13 @@ class ProductControllerTest {
 
     @MockitoBean
     private UserDetailsService userDetailsService;
+
+    // @EnableCaching (Faz 8.1) needs a CacheManager bean to exist just to wire up its
+    // proxy infrastructure - @WebMvcTest does not autoconfigure Redis/cache, and this
+    // slice never calls a real @Cacheable method anyway (productService above is
+    // already a mock), so a bare mock bean is enough to satisfy the requirement.
+    @MockitoBean
+    private CacheManager cacheManager;
 
     @Test
     @WithMockUser // reads need a token now too - this test is about the JSON contract, not auth

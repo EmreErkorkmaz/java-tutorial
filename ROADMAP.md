@@ -42,7 +42,7 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 | 5 Docker & DevOps | ✅ [notes/faz5-docker-devops.md](notes/faz5-docker-devops.md) |
 | 6 İkinci servis & senkron iletişim | ✅ [notes/faz6-ikinci-servis.md](notes/faz6-ikinci-servis.md) |
 | 7 Message queue & event-driven | ✅ [notes/faz7-event-driven.md](notes/faz7-event-driven.md) |
-| 8 Mimari olgunluk & system design | ⬜ sıradaki — ağırlık "Mimari karar konuları" bloğunda |
+| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1 ✅, sırada 8.2 (tracing) — ağırlık "Mimari karar konuları" bloğunda |
 | 9 Portfolyo & mülakat hazırlığı | ⬜ |
 
 ## Çalışma tarzı (her oturumda geçerli)
@@ -108,7 +108,9 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 
 Üç uygulama maddesi birbirinden bağımsız, sırası değişebilir.
 
-### 8.1 Redis cache — cache-aside — [uygulama] [~1 oturum]
+### 8.1 Redis cache — cache-aside — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-11)
+
+**Sonuç:** canlı ölçüldü — cache miss 1 sorgu, sonraki istekler 0 sorgu, `PUT` sonrası evict doğru çalıştı (bayat veri dönmedi), TTL (60s) dolunca tekrar DB'ye gitti. Yol boyunca gerçek bir tuzak çıktı: `ProductResponse` (record, implicit `final`) `GenericJacksonJsonRedisSerializer` ile cache'lenince tip bilgisi JSON'a gömülmedi (Jackson'ın `DefaultTyping.NON_FINAL`'i final sınıfları atlıyor), geri okumada `ClassCastException`. Çözüm: tek bilinen tip için `JacksonJsonRedisSerializer<ProductResponse>` (non-generic, tipi constructor'da belirten serializer). Ayrıca `@EnableCaching` `ProductControllerTest`'i (`@WebMvcTest`) bozdu — slice cache autoconfig'i yüklemiyor, `CacheManager` bean'i bulunamadı; `@MockitoBean CacheManager` eklenerek düzeltildi (Faz 7.1'deki `RabbitTemplate` testi bozması ile aynı desen). Kartlar: `notes/kartlar.md`.
 
 **Problem:** Aynı ürün tekrar tekrar okunuyor ve her seferinde DB'ye gidiyor. Önce **ölçülür**: `spring.jpa.show-sql` açıkken aynı `GET /api/products/{id}` çağrısı N kez → N sorgu. (Faz 3'teki N+1 ile aynı refleks: önce logda gör, sonra çöz.)
 

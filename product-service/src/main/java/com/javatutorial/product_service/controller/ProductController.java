@@ -41,7 +41,8 @@ public class ProductController {
 
     @GetMapping("/{id}")
     public ProductResponse getById(@PathVariable Long id) {
-        return ProductResponse.from(productService.findById(id)); // the entity no longer leaks out
+        // return ProductResponse.from(productService.findById(id)); // the entity no longer leaks out
+        return productService.findResponseById(id); // Cache response
     }
 
     // Separate path on purpose: the paginated collection returns a Page, this returns a
