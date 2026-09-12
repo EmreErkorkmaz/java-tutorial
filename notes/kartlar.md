@@ -116,7 +116,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Preflight isteği neyi tetikler?
 **C:** "Simple request" olmayan her istek: `Authorization` header'ı eklediğin veya `application/json` gövde gönderdiğin an tarayıcı önce `OPTIONS` ile izin sorar. Reddedilirse asıl istek hiç gönderilmez. `Access-Control-Max-Age` bu cevabı cache'ler.
 
-**S:** `[zayıf]` CSRF neden token tabanlı API'da yapısal olarak yok?
+**S:** `[zayıf]` CSRF neden token tabanlı API'da yapısal olarak yok? (2026-09-12: sonuç doğru — "engelliyor" — ama mekanizma (cookie'nin otomatik eklenmesi vs header'ın eklenmemesi) hâlâ net değil)
 **C:** CSRF, tarayıcının kimliği (cookie) isteğe **otomatik eklemesinden** doğar. `Authorization` header'ı otomatik eklenmediği için saldırganın sitesinden gelen istek kimlik taşımaz — bu yüzden `csrf.disable()` bizim kurulumda güvenli. Cookie tabanlı oturuma dönülürse CSRF koruması **geri açılmalı**.
 **Projede:** Faz 4 — `SecurityConfig`.
 
@@ -135,7 +135,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 
 **S:** Rate limiting'in doğru katmanı neresi?
 **C:** Genelde uygulama değil, gateway/proxy — ya da paylaşılan bir store (Redis). Uygulama içi sayaç **instance başına ayrı** çalışır (3 replika = 3x limit) ve restart'ta sıfırlanır. Ek takas: kullanıcı bazlı kilit, saldırganın bilerek hesabı kilitlediği bir DoS aracına dönüşebilir → IP + kullanıcı kombinasyonu, üstel gecikme veya CAPTCHA.
-**Projede:** Faz 4 — `LoginAttemptService` bilinçli olarak yanlış katmanda yazıldı, Faz 8.3'te gateway'e taşınacak.
+**Projede:** Faz 4 — `LoginAttemptService` bilinçli olarak yanlış katmanda yazıldı. Faz 8.3'te gateway'e (nginx `limit_req_zone`) taşındı ve canlı doğrulandı: 8090 üzerinden hızlı istekler 429 aldı, **aynı anda** doğrudan `product-service`'e (8080) atılan istek 200 döndü — gateway'in limiti sadece kendinden geçen trafiği görüyor, bu da "tek katmanlı savunmanın" sınırını gösteriyor (defense in depth ihlali, auth için de aynı risk — bilerek teoride bırakıldı).
 
 **S:** TLS neyi korur, neyi korumaz?
 **C:** Üç garanti verir: gizlilik, bütünlük, sunucu kimliği (sertifika). Ama yalnızca **yoldaki** veriyi korur — sunucuda çözülür, uygulama loglarına ne yazdığını umursamaz. Bu yüzden token URL'e konursa TLS'e rağmen access loglarına düz metin yazılır; token her zaman header'da taşınır. Production'da TLS genelde load balancer/ingress'te sonlanır, iç ağda düz HTTP konuşulur.
@@ -224,7 +224,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** **Sonra.** Önce yayınlarsan, transaction rollback olduğunda var olmayan bir sipariş için bildirim gitmiş olur. Ama sonrasında da atomik değildir: save başarılı olup publish patlarsa sipariş var, event yok — **ve şu anki kodumuzda bunun üstüne kullanıcı da 500 alıyor**, çünkü `convertAndSend` etrafında catch yok ve `GlobalExceptionHandler`'da AMQP'ye özel bir handler tanımlı değil. Yani sipariş DB'de duruyor ama istemci "başarısız" sinyali görüyor — muhtemelen tekrar dener ve ikinci bir sipariş daha açar. Bu boşluğun standart çözümü outbox pattern.
 **Projede:** Faz 7.1 — `create()` `@Transactional` olmadığı için `save()` zaten commit edilmiş oluyor, publish ondan sonra. 2026-09-10'da canlı doğrulandı: RabbitMQ durdurulup sipariş oluşturuldu → istemci 500 aldı, `customer_order` tablosunda satır **vardı**.
 
-**S:** `[zayıf]` Outbox pattern nedir, hangi problemi çözer? (üç turdur takılınıyor: 2026-09-10 teach-back'te ismi hatırlanmadı, 2026-09-11'de isim geldi ama mekanizma hâlâ tersten kuruldu — "önce dene, başarısız olursa tabloya yaz" dendi; doğrusu "önce koşulsuz tabloya yaz, publish denemesi HİÇ yapılmadan önce")
+**S:** Outbox pattern nedir, hangi problemi çözer? (2026-09-12'de doğru cevaplandı: "her transaction'da koşulsuz yazılır, başarısız olursa tabloda kalır, periyodik tekrar denenir" — üç turluk `[zayıf]` düştü)
 **C:** "DB'ye yaz + kuyruğa yayınla" iki ayrı sistem olduğu için atomik değildir. Outbox'ta event, iş kaydıyla **aynı transaction içinde, publish hiç denenmeden önce, koşulsuz** bir `outbox` tablosuna yazılır (yani ya ikisi de olur ya hiçbiri). Ayrı bir süreç (poller veya CDC/Debezium) bu tablodan yayınlanmamış satırları okuyup kuyruğa taşır. Kritik nokta: mekanizma reaktif değil — "yayınlama başarısız oldu mu" diye kontrol etmez, sadece "tabloda hâlâ yayınlanmamış satır var mı" sorar; satır durdukça (ilk deneme hiç yapılmamış olsun ya da patlamış olsun fark etmez) tekrar dener. **Sık yapılan hata:** "publish başarısız olursa tabloya yaz" demek — bu, publish denemesi ile tabloya yazma arasında hâlâ bir boşluk bırakır, tam çözülmesi gereken problemi geri getirir. Mülakat favorisi.
 **Çapa:** Çıkış sepeti. Mektubu kaydın yanına, aynı çekmeceye koyarsın; kurye sonra gelip alır. "Kayıt var ama mektup yok" durumu oluşmaz.
 
@@ -297,3 +297,13 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **S:** Aynı Spring Boot modülü (örn. "web" desteği) her zaman aynı bağımlılıkla mı gelir?
 **C:** Hayır — Boot 4.1'de sunucu tarafı (`spring-boot-starter-webmvc`, gelen isteği karşılamak) ve istemci tarafı (`spring-boot-starter-restclient`, giden istek atmak) **ayrı starter'lar**. Eski sürümlerde (Boot 3.x) `RestClient.Builder`'ın auto-configure edildiği kod genel autoconfigure jar'ının içindeydi, herhangi bir web starter'ı ile bedavaydı. Boot 4.1 bunu ayrıştırdı: sadece sunucu olan bir servisin istemci tarafı autoconfig'e ihtiyacı yok, tersi de doğru.
 **Projede:** Faz 8.2 — `order-service`'e `spring-boot-starter-restclient` eklenmeden `RestClient.Builder` bean'i context'te hiç yoktu, uygulama **hiç açılmadı** (`NoSuchBeanDefinitionException` yerine `UnsatisfiedDependencyException` — inject edilecek bean'in kendisi yoktu).
+
+**S:** Bir ekosistem aracı (Spring Cloud gibi), altındaki framework'ün (Spring Boot) en yeni sürümüyle her zaman uyumlu mudur?
+**C:** Hayır — büyük eklenti ekosistemleri genelde ana framework'ün **birkaç ay gerisinden** gelir; en yeni sürüm çıktığında henüz güncellenmemiş olabilirler. Bu, "en yeni sürümü kullanmalı mıyım" sorusunun cevabını teknik değil **risk yönetimi** sorusuna çeviriyor: bleeding-edge bir framework sürümü + ona henüz yetişmemiş bir ekosistem aracı = gerçek bir uyumsuzluk riski.
+**Çapa:** Ana yolu asfaltlayan ekip ile kaldırımı döşeyen ekip aynı hızda ilerlemez — asfalt bitti diye kaldırım da bitmiş olmaz.
+**Projede:** Faz 8.3 — Spring Cloud Gateway 4.3.0 (`spring-cloud 2025.0.0`), Boot 4.1.0 ile `NoClassDefFoundError` verdi (minimal bir probe uygulamasında bile context açılmadı). Roadmap bu riski önceden yazmıştı ("önce doğrula, yoksa nginx'e indirge") — gerçekleşti, nginx reverse proxy'ye geçildi.
+
+**S:** nginx'te bir `location` tanımının sonunda `/` olması ne fark yaratır?
+**C:** `location /api/products/` (sonunda `/`) sadece bu path'in **altındaki** isteklerle eşleşir (`/api/products/5` eşleşir) — path'in **kendisiyle** (`/api/products`, slash'sız) eşleşmez, çünkü prefix eşleşmesi "istek, location string'iyle başlıyor mu" sorusuna bakar ve daha kısa bir string daha uzun bir string'le başlayamaz. Eşleşmeyen istek nginx'in kendi varsayılan statik dosya sunucusuna düşer — bir `proxy_pass` beklerken sessizce 404/301 almanın klasik sebebi budur.
+**Çapa:** "/api/products/" bir çekmecenin İÇİ, "/api/products" çekmecenin kendisi — çekmecenin içini arayan biri çekmecenin üstündeki etikete bakmaz.
+**Projede:** Faz 8.3 — `nginx.conf`'ta `location /api/products/` yazınca `/api/products` isteği eşleşmedi, nginx'in varsayılan `root` handler'ına düştü ve 301 (trailing slash ekleme) döndürdü. Sonunda `/` kaldırılınca (`location /api/products`) düzeldi.

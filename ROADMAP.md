@@ -42,7 +42,7 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 | 5 Docker & DevOps | ✅ [notes/faz5-docker-devops.md](notes/faz5-docker-devops.md) |
 | 6 İkinci servis & senkron iletişim | ✅ [notes/faz6-ikinci-servis.md](notes/faz6-ikinci-servis.md) |
 | 7 Message queue & event-driven | ✅ [notes/faz7-event-driven.md](notes/faz7-event-driven.md) |
-| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1 ✅, 8.2 ✅, sırada 8.3 (gateway) — ağırlık "Mimari karar konuları" bloğunda |
+| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1 ✅, 8.2 ✅, 8.3 ✅, sırada 8.4 + Mimari karar konuları (teach-back) |
 | 9 Portfolyo & mülakat hazırlığı | ⬜ |
 
 ## Çalışma tarzı (her oturumda geçerli)
@@ -142,17 +142,19 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 
 **Not al:** Sampling oranı maliyet kararıdır: %100 trace üretim yükünü ve depolamayı ciddi artırır, %1 nadir hatayı kaçırır.
 
-### 8.3 API Gateway — [uygulama] [~1 oturum]
+### 8.3 API Gateway — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-12)
 
 **Problem:** İstemci iki (yakında üç) ayrı porta gitmek zorunda; rate limiting Faz 4'te **uygulama içinde** yazıldı (`LoginAttemptService`) ve orada notunu düştük: instance başına ayrı çalışır, restart'ta sıfırlanır — **yanlış katman**.
 
-**Yaklaşım:** Spring Cloud Gateway ile tek giriş noktası; routing + merkezi rate limiting (Redis tabanlı, 8.1'de zaten Redis var). Auth'un gateway'e taşınması **teoride** kalır: gateway token'ı doğrulayıp servisleri sadeleştirebilir, ama servisler "gateway'den geldi" varsayımına bağlanırsa iç ağdan gelen istek korumasız kalır (defense in depth ihlali).
+**Risk gerçekleşti:** Roadmap'in önceden yazdığı risk aynen çıktı — Spring Cloud Gateway (4.3.0 / `spring-cloud 2025.0.0`) Boot 4.1.0 ile `NoClassDefFoundError` verdi, minimal bir probe uygulamasında bile context açılmadı (canlı test edildi). **nginx reverse proxy'ye** indirgendi.
 
-**Dosyalar:** yeni `api-gateway/` modülü (Spring Cloud BOM + `spring-cloud-starter-gateway`), route tanımları, compose girdisi.
+**Yaklaşım (nginx):** Tek giriş noktası (`:8090`), `location /api/products` ve `/api/orders` `proxy_pass` ile yönlendiriyor; `limit_req_zone` ile IP bazlı rate limiting (10r/s, burst 5) — Faz 4'teki `LoginAttemptService`'in doğru katıma taşınmış hâli. Auth'un gateway'e taşınması **teoride** kaldı: gateway token'ı doğrulayıp servisleri sadeleştirebilir, ama servisler "gateway'den geldi" varsayımına bağlanırsa iç ağdan gelen istek korumasız kalır (defense in depth ihlali) — rate limit testinde bu risk **canlı görüldü**: gateway limit'e girerken doğrudan servise (8080) atılan istek sorunsuz geçti.
 
-**Risk (önce doğrula):** Spring Cloud'un Boot 4.1 ile uyumlu sürümü var mı — yoksa bu madde ertelenir veya nginx ile basit reverse proxy'ye indirgenir.
+**Dosyalar:** `nginx/nginx.conf`, `compose.yaml` (`gateway` servisi, nginx:1.27-alpine).
 
-**Kabul kriteri:** Tek porttan (`:8090`) hem `/api/products/**` hem `/api/orders/**` çalışıyor; gateway'de tanımlı rate limit aşılınca 429, servisler doğrudan çağrıldığında kendi kuralları hâlâ geçerli.
+**Tuzak (canlı yaşandı):** `location /api/products/` (sonunda `/`) `/api/products` isteğiyle eşleşmiyor — prefix eşleşmesi kısa string'in uzun string'i "içerdiği" değil "başlattığı" mantığıyla çalışır. Sonunda `/` kaldırılarak düzeltildi.
+
+**Kabul kriteri:** ✅ Tek porttan (`:8090`) hem `/api/products` hem `/api/orders` çalışıyor; hızlı art arda istek 429 aldı; **aynı anda** doğrudan `product-service`'e (8080) atılan istek 200 döndü (gateway'in limiti sadece kendinden geçen trafiği görüyor).
 
 ### 8.4 Dağıtık sistem teorisi — [teori] (2026-09-10'da budandı)
 
