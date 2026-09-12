@@ -29,7 +29,11 @@ public class ProductClient {
             delay = 200, // wait 200ms before the first retry
             multiplier = 2.0, // then 400ms - exponential backoff
             jitter = 50) // randomise a little so retries do not arrive in lockstep
-    @ConcurrencyLimit(20) // bulkhead: at most 20 threads may sit in this call at once
+    // bulkhead: at most 20 threads may sit in this call at once. policy=REJECT because the
+    // default (BLOCK) waits on a Condition with no timeout - a caller past the limit would
+    // hang indefinitely instead of getting the 503 GlobalExceptionHandler already handles
+    // for InvocationRejectedException.
+    @ConcurrencyLimit(value = 20, policy = ConcurrencyLimit.ThrottlePolicy.REJECT)
     public ProductView findById(Long productId) {
         try {
             return restClient.get()
@@ -59,7 +63,7 @@ public class ProductClient {
     @Retryable(
             includes = ProductServiceUnavailableException.class,
             maxRetries = 2, delay = 200, multiplier = 2.0, jitter = 50)
-    @ConcurrencyLimit(20)
+    @ConcurrencyLimit(value = 20, policy = ConcurrencyLimit.ThrottlePolicy.REJECT)
     public List<ProductView> findByIds(List<Long> productIds) {
         try {
             return restClient.get().uri(uri ->

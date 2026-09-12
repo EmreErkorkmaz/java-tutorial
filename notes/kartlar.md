@@ -187,6 +187,8 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Bulkhead nedir?
 **C:** Bir bağımlılığın tüketebileceği kaynağı tavanlamak. `@ConcurrencyLimit(20)`: `product-service` yavaşlasa bile en fazla 20 thread orada bekleyebilir, kalan thread'ler diğer isteklere hizmet etmeye devam eder. Kısmi bozulma böyle sağlanır — Faz 6'da doğrulandı: `product-service` kapalıyken sipariş oluşturulamıyordu ama liste/okuma ve health çalışıyordu.
 **Çapa:** Geminin su geçirmez bölmeleri — bir bölme su alır, gemi batmaz.
+**Tuzak (2026-09-12, bytecode'dan doğrulandı):** `@ConcurrencyLimit`'in varsayılan politikası `REJECT` değil **`BLOCK`** — limit dolunca 21. çağrı reddedilmez, `Condition.await()` ile **süresiz** bekler (timeout yok). Yani "limit dolarsa hata alırım" varsayımı yanlış; gerçekte thread kuyrukta asılı kalır ve bu, bulkhead'in önlemeye çalıştığı "bir bağımlılık her şeyi batırır" senaryosunu bir üst katmanda geri getirebilir. Kod düzeltildi: `policy = ConcurrencyLimit.ThrottlePolicy.REJECT` — artık `InvocationRejectedException` fırlıyor, `GlobalExceptionHandler` bunu 503'e çeviriyor (o handler zaten yazılıydı ama önceden hiç tetiklenmiyordu).
+**Not al:** Bir kütüphanenin varsayılan davranışını "mantıken böyle olmalı" diye tahmin etmek yerine doğrulamak — burada sezgi tam ters çıktı.
 
 **S:** Dağıtık N+1 nedir, nasıl çözüldü?
 **C:** Faz 3'teki N+1'in bir katman yukarısı: sipariş satırı başına bir HTTP çağrısı. Ölçüldü: 5 satırlı sipariş **5 HTTP + 5 SQL → 1 + 1** (toplu `GET /api/products/by-ids?ids=...` endpoint'i). Kalıp aynı: döngü içinde tek tek sorma, hepsini bir kere iste.
