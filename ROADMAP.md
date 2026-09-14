@@ -42,7 +42,7 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 | 5 Docker & DevOps | ✅ [notes/faz5-docker-devops.md](notes/faz5-docker-devops.md) |
 | 6 İkinci servis & senkron iletişim | ✅ [notes/faz6-ikinci-servis.md](notes/faz6-ikinci-servis.md) |
 | 7 Message queue & event-driven | ✅ [notes/faz7-event-driven.md](notes/faz7-event-driven.md) |
-| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1 ✅, 8.2 ✅, 8.3 ✅, sırada 8.4 + Mimari karar konuları (teach-back) |
+| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1-8.3 ✅, Mimari karar konuları ✅, sırada 8.4 (CAP + system design egzersizleri) |
 | 9 Portfolyo & mülakat hazırlığı | ⬜ |
 
 ## Çalışma tarzı (her oturumda geçerli)
@@ -162,20 +162,22 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 - [ ] Klasik system design egzersizleri (URL shortener, rate limiter, feed, bildirim sistemi) — çizim + trade-off tartışması.
 - [ ] Service discovery + merkezi konfigürasyon — **tek paragraf**, ayrı madde değil: bizim `PRODUCT_SERVICE_BASE_URL` yaklaşımı (env variable + compose DNS) küçük ölçekte yeterli; Eureka/Spring Cloud Config dinamik instance sayısı ve çok ortamlı deploy olunca gerekir. Kavramı bilmek yeter, kurmak Faz 9 için gereksiz.
 
-### Mimari karar konuları — **Faz 8'in ana malzemesi**, kuyruğu değil
+### Mimari karar konuları — **Faz 8'in ana malzemesi**, kuyruğu değil ✅ tamamlandı (2026-09-14)
 
 Öncelik kararı (2026-09-10): solutions-architecture hedefi için **mülakat getirisi en yüksek blok burasıdır**. 8.1-8.3'ün uygulama maddeleri bu tartışmaların somut çapası olarak var; asıl iş bu listede.
 
 Format: **teach-back** — her madde bir mülakat sorusu gibi sorulur, Emre cevaplar, zorlayıcı follow-up gelir, eksik kalan tamamlanır ve kart olarak `notes/kartlar.md`'ye düşer. Her biri "hangi durumda hangisi ve neden" formatında, **bu projedeki somut bir karara bağlanarak**.
 
-- [ ] **Runtime/dil seçimi** — iş yükünün şekli belirler: I/O-yoğun + çok bağlantı → Node (event loop); CPU-yoğun veya ağır domain/transaction → Go/Java/Rust. JVM warm-up serverless'ta maliyet, Go tek binary ile container'da avantaj. Pratikte ekip bilgisi ve ekosistem teknik farktan baskın.
-- [ ] **Eşzamanlılık modelleri** — tek thread + event loop vs thread-per-request; bloklamanın maliyeti; thread-safety (Java'da gerekli, Node'da değil); Java 21 virtual threads farkı nasıl kapatıyor. → Bağlanacağı karar: Faz 6'daki `@ConcurrencyLimit(20)` bulkhead'i.
-- [ ] **Senkron vs asenkron iletişim** — → Faz 7.1'deki ayrım (fiyat senkron, bildirim event).
-- [ ] **Veri tutarlılığı** — güçlü vs eventual; saga, outbox; dağıtık sistemde foreign key'in kaybı. → `order_item.product_id`'nin neden FK olmadığı.
-- [ ] **Ölçekleme asimetrisi** — stateless app yatayda ucuz, database değil; read replica, cache, sharding sırası ve maliyetleri. → 8.1'deki cache bu sıranın ilk adımı.
-- [ ] **Cache stratejileri** — cache-aside vs write-through; invalidation; stale data ne zaman kabul edilebilir. → 8.1.
-- [ ] **Monolit → mikroservis geçiş kararı** — ne zaman bölünür, ne zaman bölünmez; dağıtık monolit anti-pattern'i. → İki servisimizin bize ödettiği bedel (dağıtık N+1, token propagation, ayrı DB).
-- [ ] **Build vs buy** — auth (IdP), ödeme, arama, bildirim. → Faz 4'te auth'u kendimiz yazdık ama production'da yazılmayacağının notunu düştük.
+**Sonuç:** Sekiz maddenin sekizi de işlendi, üç turda toparlanan iki tanesi hariç ilk/ikinci turda oturdu — **runtime/dil seçimi** (I/O-bound vs CPU-bound karışıklığı düzeltildi) ve **build vs buy** (sosyal login ile genel IdP gerekçesi karışmıştı, düzeltildi) üç turda net kapandı. Hepsi kart oldu.
+
+- [x] **Runtime/dil seçimi** — iş yükünün şekli belirler: I/O-yoğun + çok bağlantı → Node (event loop); CPU-yoğun veya ağır domain/transaction → Go/Java/Rust. JVM warm-up serverless'ta maliyet, Go tek binary ile container'da avantaj. Pratikte ekip bilgisi ve ekosistem teknik farktan baskın.
+- [x] **Eşzamanlılık modelleri** — tek thread + event loop vs thread-per-request; bloklamanın maliyeti; thread-safety (Java'da gerekli, Node'da değil); Java 21 virtual threads farkı nasıl kapatıyor. → Bağlanacağı karar: Faz 6'daki `@ConcurrencyLimit(20)` bulkhead'i (yol boyunca gerçek bir kod hatası bulundu: varsayılan politika `REJECT` değil `BLOCK`'tu, düzeltildi).
+- [x] **Senkron vs asenkron iletişim** — → Faz 7.1'deki ayrım (fiyat senkron, bildirim event).
+- [x] **Veri tutarlılığı** — güçlü vs eventual; saga, outbox; dağıtık sistemde foreign key'in kaybı. → `order_item.product_id`'nin neden FK olmadığı.
+- [x] **Ölçekleme asimetrisi** — stateless app yatayda ucuz, database değil; read replica, cache, sharding sırası ve maliyetleri. → 8.1'deki cache bu sıranın ilk adımı.
+- [x] **Cache stratejileri** — cache-aside vs write-through; invalidation; stale data ne zaman kabul edilebilir. → 8.1.
+- [x] **Monolit → mikroservis geçiş kararı** — ne zaman bölünür, ne zaman bölünmez; dağıtık monolit anti-pattern'i. → İki servisimizin bize ödettiği bedel (dağıtık N+1, token propagation, ayrı DB).
+- [x] **Build vs buy** — auth (IdP), ödeme, arama, bildirim. → Faz 4'te auth'u kendimiz yazdık ama production'da yazılmayacağının notunu düştük.
 
 ---
 
