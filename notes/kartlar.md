@@ -116,7 +116,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Preflight isteği neyi tetikler?
 **C:** "Simple request" olmayan her istek: `Authorization` header'ı eklediğin veya `application/json` gövde gönderdiğin an tarayıcı önce `OPTIONS` ile izin sorar. Reddedilirse asıl istek hiç gönderilmez. `Access-Control-Max-Age` bu cevabı cache'ler.
 
-**S:** `[zayıf]` CSRF neden token tabanlı API'da yapısal olarak yok? (2026-09-12: sonuç doğru — "engelliyor" — ama mekanizma (cookie'nin otomatik eklenmesi vs header'ın eklenmemesi) hâlâ net değil)
+**S:** CSRF neden token tabanlı API'da yapısal olarak yok? (2026-09-14'te header/cookie ayrımı doğru geldi — `[zayıf]` düştü, "otomatik ekleme" detayını tazelemeye devam et)
 **C:** CSRF, tarayıcının kimliği (cookie) isteğe **otomatik eklemesinden** doğar. `Authorization` header'ı otomatik eklenmediği için saldırganın sitesinden gelen istek kimlik taşımaz — bu yüzden `csrf.disable()` bizim kurulumda güvenli. Cookie tabanlı oturuma dönülürse CSRF koruması **geri açılmalı**.
 **Projede:** Faz 4 — `SecurityConfig`.
 
@@ -314,3 +314,15 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **C:** Aynı **iş** (bir isme giden trafiği, o an ayakta olan kopyalar arasında dağıtmak) ama farklı **güncelleme mekanizması**. nginx'in `upstream` listesi **statik** — sen elle yazarsın, bir kopya çökerse nginx bunu otomatik fark etmez (health check eklemeden). K8s `Service`, `Deployment`'ın yönettiği pod'ları **etiketle sürekli izler** — pod çökerse liste otomatik küçülür, `Deployment` yeni pod açınca otomatik büyür. `Deployment` = "bu pod'dan N kopya her zaman ayakta olsun" (self-healing + ölçekleme), `Service` = o kopyalar arasında trafiği dağıtan stabil isim.
 **Çapa:** nginx upstream = elle güncellenen bir rehber; K8s Service = kendi kendini güncelleyen, canlı bir rehber.
 **Projede:** Faz 8.3'te yaşadığımız kısıt (`container_name` sabit → `docker compose --scale` imkânsız, Faz 6 devir notu) K8s'in platform seviyesinde çözdüğü şey. nginx de K8s'in içinde kullanılabilir (nginx-ingress-controller) — orada statik değil, K8s API'sinden beslenir.
+
+## Mimari karar konuları (Faz 8 — teach-back)
+
+**S:** Concurrency (eşzamanlılık) ile parallelism (paralellik) arasındaki fark ne?
+**C:** **Concurrency** = birden fazla işi aynı anda başlamış gibi yönetmek — ama bir anda gerçekten sadece biri ilerliyor olabilir (Node'un event loop'u: I/O beklerken bloklanmaz, başka işe geçer, sonra geri döner). **Parallelism** = birden fazla işi gerçekten aynı anda, farklı CPU çekirdeklerinde çalıştırmak (Java'nın thread-per-request modeli, çok çekirdekli makinede). Ayrım "multi-thread vs event loop" değil, **I/O-bound vs CPU-bound**: I/O-bound işte (çoğu zaman bekleyen bağlantı) Node'un tek thread'i yeterli; CPU-bound işte (ağır hesaplama) Node'un tek JS thread'i tıkanır, tüm event loop'u bloklar.
+**Çapa:** Concurrency = bir aşçının birden fazla tencereyi aynı anda kaynatıp aralarında gidip gelmesi. Parallelism = birden fazla aşçının, her biri kendi tezgahında, gerçekten aynı anda pişirmesi.
+**Projede:** `ProductClient.java` — `@ConcurrencyLimit(20)` (bulkhead) Java'nın thread-per-request modeline dayanıyor. Java 21 virtual thread'ler I/O-bound iş için Node'un event loop'una yakın bir hafiflik sağlıyor, CPU-bound için gerçek paralellik avantajı JVM'de kalıyor.
+
+**S:** `[zayıf]` Dağıtık monolit nedir, nasıl ortaya çıkar? (2026-09-14: monorepo yapısıyla karıştırıldı — "aynı repo, nginx ile bağımsız deploy" dendi, bu aslında sorunun kendisi değil, mikroservisin kazanmak istediği şey)
+**C:** Servisleri ayrı deploy edilebilir birimlere böldün, ama birbirlerine o kadar sıkı bağlılar ki **bağımsız deploy/ölçekleyemiyorsun** — mikroservisin tüm operasyonel yükünü (ağ, serialization, dağıtık debug) alıyorsun, hiçbir faydasını (bağımsızlık) almıyorsun. Klasik sebepleri: **paylaşılan veritabanı**, **lockstep deploy zorunluluğu**, **döngüsel bağımlılıklar**. Monorepo (aynı repo'da birden fazla servis) bununla ilgisiz — bir repo yapısı kararı, coupling kararı değil.
+**Çapa:** Ayrı evlere taşınmışsın ama tek anahtarı paylaşıyorsun — resmi olarak ayrısınız, gerçekte hâlâ birbirinize muhtaçsınız.
+**Projede:** Faz 6 devir notu — `order-service` ve `product-service` aynı `product` DB kullanıcısını paylaşıyor. Tam bir dağıtık monolit değiliz (ayrı veritabanları, bağımlılık keyfi değil gerçek bir ihtiyaçtan — fiyat bilgisi) ama bu paylaşılan kullanıcı küçük bir koku.
