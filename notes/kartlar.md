@@ -258,6 +258,19 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **C:** RabbitMQ'da mesaj **tüketilince kuyruktan silinir** (task/command kuyruğu). Kafka'da mesaj retention süresi boyunca kalır, tüketilmiş olsa da — consumer kendi okuma pozisyonunu (offset) tutar, farklı bir consumer group aynı veriyi baştan okuyabilir (**replay edilebilir event stream**). RabbitMQ routing key ile hedefe yönlendirir; Kafka'da eşdeğeri topic + partition (paralellik birimi) + consumer group.
 **Çapa:** RabbitMQ = posta kutusu (okununca boşalır). Kafka = ses kayıt bandı (dinleyen bandı silmez, başka biri baştan dinleyebilir).
 
+**S:** Kafka'da partition ve consumer group nasıl birlikte çalışır?
+**C:** Partition = bir topic'in **paralellik birimi**; her partition kendi içinde sıralı, topic genelinde sıra garantisi yok. Bir consumer group içinde, **bir partition en fazla bir consumer tarafından okunur** (paralel tüketim, partition sayısı = maks. paralellik derecesi). **Farklı bir consumer group** aynı partition'ı **baştan, bağımsız** okuyabilir — replay budur.
+**Çapa:** Partition sayısı kasadaki gişe sayısı gibi — 3 gişe varsa aynı anda en fazla 3 kişiye hizmet verebilirsin, 4. kişi (consumer) boşta kalır.
+**Projede:** Görmedik (RabbitMQ kullandık) — teoride kaldı, 7.6'da bilinçli olarak hands-on yapılmadı.
+
+**S:** RabbitMQ zaten fan-out/topic exchange ile birden fazla queue'ya yayın yapabiliyorken, "birden fazla bağımsız tüketici" senaryosunda Kafka'nın gerçek farkı ne?
+**C:** RabbitMQ da fan-out yapar (bizim `order.events` topic exchange'imize yeni bir queue bağlarsan o da mesajları alır) — ama sadece **o queue var olduktan sonra** yayınlanan mesajları. Kafka'da yeni bir consumer group **geç katılsa bile**, retention süresi boyunca duran **geçmişin tamamını** okuyabilir. Fark "birden fazla servise dağıtmak" değil (ikisi de yapar) — fark **geç katılan bir tüketicinin geçmişe erişebilmesi**.
+**Projede:** Analytics gibi sonradan eklenen bir servis, geçmiş tüm `order.created` event'lerini görmek isteseydi, RabbitMQ'da yapamazdı (queue'su yoktu, mesajlar geçip gitti) — Kafka'da yapabilirdi.
+
+**S:** CDC (Change Data Capture) nedir, outbox pattern'le bağlantısı ne?
+**C:** Bir veritabanının kendi değişiklik günlüğünü (Postgres'te WAL) dinleyip, her değişikliği bir event olarak yayınlamak (örn. Debezium). Outbox pattern'de bir poller süreci tabloyu tarayıp yayınlanmamış satırları kuyruğa taşıyordu — CDC bu poller'ı **ortadan kaldırır**: Debezium doğrudan WAL'ı dinler, outbox tablosuna yazılan her satırı otomatik Kafka'ya akıtır, polling gecikmesi ve yükü olmaz.
+**Projede:** Outbox'ı uygulamadık (teoride kaldı) — uygulasaydık, CDC bunun "production-grade" hâli olurdu.
+
 **S:** Saga pattern nedir, 2PC neden kullanılmıyor?
 **C:** Servis sınırını aşan bir iş akışında (sipariş → ödeme → stok) tek bir DB transaction'ı olamaz. Saga, akışı adım zinciri olarak yönetir; bir adım başarısız olursa önceki adımlar **rollback edilmez**, yerine **compensating action** (telafi edici işlem, örn. "stok düş" başarısız olduysa "ödeme"yi geri iade et) çalıştırılır. 2PC (two-phase commit) dağıtık kilit gerektirir, servisleri kısa süre de olsa birbirine bloklar — mikroservisin bağımsızlık amacına aykırı.
 **Çapa:** Rollback = kaseti geri sarmak. Compensating action = yapılanın tersini yeni bir hareketle üstüne kaydetmek, kaset geri sarılmaz.
@@ -331,3 +344,8 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **C:** Trafik miktarı değil, **istek başına ne kadar CPU işi** yapıldığı. I/O-bound (çoğunlukla bekleme, az CPU — chat, bildirim, basit CRUD proxy) → Node'un event loop'u hafif ve verimli. CPU-bound (gerçek hesaplama — şifreleme, görüntü işleme, ağır iş kuralı) → Java/Go/Rust, çünkü gerçek multi-core paralellik sunuyorlar; Node'un tek JS thread'i ağır hesaplamada **tüm event loop'u** bloklar. Serverless/cold-start'ta JVM dezavantajlı (JIT ısınması her seferinde ödenir), Go avantajlı (tek statik binary, ayrı runtime yok, başlangıç anlık). Pratikte ekip bilgisi + ekosistem olgunluğu, teknik farktan çoğu zaman daha belirleyici.
 **Çapa:** I/O-bound = garsonun sipariş alıp mutfağa iletmesi, beklerken başka masaya bakması (event loop). CPU-bound = aşçının kendisi — o an yemek pişiriyorsa başka hiçbir şeye bakamaz, birden fazla aşçı (çekirdek) lazım.
 **Projede:** Bütün sistem Java/Spring — üç servisimiz de (fiyat hesaplama, sipariş, event tüketme) CPU-bound olmasa da domain mantığı + transaction bütünlüğü ağır basıyor; ekip bilgisi (Java öğrenme hedefi) zaten kararı belirledi.
+
+**S:** Hexagonal mimari (Ports & Adapters) nedir?
+**C:** İş mantığını (domain) merkeze koyup dış dünyadan (DB, HTTP, kuyruk, UI) tamamen izole eden bir desen. Domain ihtiyaç duyduğu şeyi bir **port** (interface) olarak tanımlar; gerçek teknoloji bunu bir **adapter** olarak implement eder (JPA adapter, REST adapter, test için in-memory adapter). İki port türü: **driving/primary** (dışarıdan içeri çağıranlar — controller), **driven/secondary** (dışarıya çıkanlar — repository). Kazanç: adapter değiştirilebilir (Postgres→Mongo) domain'e dokunmadan, çünkü bağımlılık yönü ters çevrilmiş — domain interface'i tanımlar, altyapı onu implement eder (dependency inversion).
+**Çapa:** Elektrik prizi (port) standarttır; ülkene göre fişi (adapter) değiştirirsin, cihazın (domain) aynı kalır.
+**Projede:** Kullanmıyoruz — klasik katmanlı mimarideyiz (`ProductService`, Spring Data JPA'nın `ProductRepository`'sine **doğrudan** bağımlı). Hexagonal'da bu bir port olurdu, JPA implementasyonu ayrı bir infrastructure paketinde kalırdı. Değer kazandığı yer: iş mantığı gerçekten karmaşık olduğunda ya da altyapıyı değiştirmeyi gerçekten beklediğinde — küçük/orta CRUD sistemlerde genelde gereksiz ekstra katman.
