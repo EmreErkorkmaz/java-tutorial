@@ -47,7 +47,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 
 ## Veritabanı & JPA (Faz 3)
 
-**S:** `[zayıf]` N+1 nedir ve sorgu sayısı neye bağlıdır? (2026-09-15: "oku-değiştir-yaz" update akışıyla karıştırıldı — N+1, bir liste + her satırın ilişkili verisini döngüyle ayrı ayrı çekmek)
+**S:** N+1 nedir ve sorgu sayısı neye bağlıdır? (2026-09-15 tur 2'de düzeldi — `[zayıf]` düştü)
 **C:** İlişkili veriyi döngü içinde tek tek çekmek. Ölçüldü: 20 ürün / 20 farklı kategori → **21 sorgu**. Kritik ayrıntı: sorgu sayısı ürün sayısı değil, **farklı ilişkili kayıt sayısı + 1** (persistence context aynı entity'yi tekrar sorgulamaz). Bu yüzden az veriyle çalışan dev ortamında problem görünmez.
 **Çapa:** Markete 20 kez ayrı ayrı gitmek vs tek listeyle bir kez gitmek.
 **Projede:** Faz 3 — `@EntityGraph(attributePaths = "category")` ile 21 → 1 sorgu.
@@ -304,7 +304,7 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **Çapa:** Kargo takip numarası — aynı numara her durakta görünür.
 **Projede:** Faz 8.2 — Zipkin'de canlı doğrulandı: tek `traceId`, üç servis. `product-service`'in span'i `order-service`'in `http get` span'inin (senkron, Faz 6), `notification-service`'in span'i `order-service`'in publish span'inin (asenkron, Faz 7 — RabbitMQ observation açılarak) doğrudan çocuğu.
 
-**S:** `[zayıf]` Spring'in yönettiği bir nesne (`RestClient.Builder` gibi) ile kendi kurduğun bir nesne (`RestClient.builder()`) arasındaki fark tracing'i nasıl etkiler? (2026-09-15: soru yerine tracing'in genel faydaları anlatıldı — "Spring sadece kendi yönettiği nesneye özellik ekleyebilir" cevabı hâlâ gelmedi)
+**S:** Spring'in yönettiği bir nesne (`RestClient.Builder` gibi) ile kendi kurduğun bir nesne (`RestClient.builder()`) arasındaki fark tracing'i nasıl etkiler? (2026-09-15 tur 2'de netleşti — `[zayıf]` düştü)
 **C:** Boot, tracing/observation desteğini yalnızca **kendi yönettiği** (context'e bean olarak kayıtlı) nesnelere otomatik özellik ekleyebilir — `RestClient.Builder`'ı inject edip kullanırsan Boot ona bir `ObservationRestClientCustomizer` uygular, bu da her giden isteğe `traceId`/`spanId` header'ını otomatik ekler. Statik `RestClient.builder()` ile elle kurduğun bir istemci Spring'in hiç haberi olmayan bir nesnedir — hiçbir otomatik özellik ona uygulanmaz, trace zinciri tam o noktada kopar.
 **Çapa:** Aynı self-invocation dersi, farklı kılıkta: Spring sadece **kendi elinden geçen** nesneleri geliştirebilir, arkadan gizlice kurduğun bir nesneye hiçbir şey ekleyemez.
 **Projede:** Faz 8.2 — `RestClientConfig.java`, `RestClient.builder()` → injected `RestClient.Builder`. Düzeltilmeden önce `product-service`'e giden çağrılar trace'e hiç girmiyordu.
@@ -349,3 +349,17 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **C:** İş mantığını (domain) merkeze koyup dış dünyadan (DB, HTTP, kuyruk, UI) tamamen izole eden bir desen. Domain ihtiyaç duyduğu şeyi bir **port** (interface) olarak tanımlar; gerçek teknoloji bunu bir **adapter** olarak implement eder (JPA adapter, REST adapter, test için in-memory adapter). İki port türü: **driving/primary** (dışarıdan içeri çağıranlar — controller), **driven/secondary** (dışarıya çıkanlar — repository). Kazanç: adapter değiştirilebilir (Postgres→Mongo) domain'e dokunmadan, çünkü bağımlılık yönü ters çevrilmiş — domain interface'i tanımlar, altyapı onu implement eder (dependency inversion).
 **Çapa:** Elektrik prizi (port) standarttır; ülkene göre fişi (adapter) değiştirirsin, cihazın (domain) aynı kalır.
 **Projede:** Kullanmıyoruz — klasik katmanlı mimarideyiz (`ProductService`, Spring Data JPA'nın `ProductRepository`'sine **doğrudan** bağımlı). Hexagonal'da bu bir port olurdu, JPA implementasyonu ayrı bir infrastructure paketinde kalırdı. Değer kazandığı yer: iş mantığı gerçekten karmaşık olduğunda ya da altyapıyı değiştirmeyi gerçekten beklediğinde — küçük/orta CRUD sistemlerde genelde gereksiz ekstra katman.
+
+## System design egzersizleri (Faz 8.4)
+
+**S:** Dağıtık rate limiting'de nginx'in `limit_req_zone`'u neden yetmez?
+**C:** Her gateway instance'ı kendi belleğinde **ayrı** sayar, birbirini görmez — 3 instance varsa kullanıcı limitin 3 katını geçirebilir (her instance kendi 100'üne kadar sayar). Aynı kalıp: Faz 4'teki `LoginAttemptService` (instance başına ayrı sayaç) ve `container_name` sabit olduğu için `--scale` yapamamamız. Çözüm: sayacı **paylaşılan, atomik** bir depoya (Redis, `INCR`) taşımak — hangi gateway sorarsa sorsun aynı sayıyı görür.
+**Çapa:** Üç kapıcı, ortak bir defter yerine kendi cebine not tutuyor — kimse toplamı bilmiyor.
+
+**S:** Rate limiting algoritmaları — fixed window, sliding window log, sliding window counter, token bucket — hangisi ne zaman?
+**C:** **Fixed window** (basit sayaç + pencere): en ucuz, ama pencere sınırında kısa sürede 2x trafiğe izin verebilir. **Sliding window log** (her isteğin zaman damgası): en hassas, ama bellek maliyeti yüksek (her istek kayıtlı). **Sliding window counter** (mevcut + önceki pencerenin ağırlıklı payı): fixed window'un O(1) belleğini korur, sınır zaafını yumuşatır — pratik uzlaşma. **Token bucket** (sabit hızda dolan kova, istek başına 1 token): burst'e izin verirken ortalama hızı korur, O(1) bellek, Redis'te atomik uygulaması kolay — **endüstri standardı** (Stripe, AWS, Google).
+**Çapa:** Fixed window = ayın 1'inde sıfırlanan bütçe (ay sonu-ay başı açığı var). Token bucket = sabit hızda dolan su deposu (biriktiyse aniden çok su çekebilirsin, ama uzun vadede musluk hızını geçemezsin).
+**Projede:** nginx'teki `limit_req ... burst=5 nodelay` (Faz 8.3) aslında basit bir token bucket — burst kadar birikmiş "izin" harcanabiliyor.
+
+**S:** "Hangi rate limiting algoritması en iyisi" sorusuna doğru cevap nedir?
+**C:** Tek isim değil — **burst'e izin vermek istiyor musun, hassasiyet mi öncelikli, bellek maliyeti neyi taşıyabiliyor** sorusuna bağlı. Token bucket varsayılan iyi cevap (pratikte en çok kullanılan) ama gerekçesiz söylenirse zayıf kalır — mülakatta "neden" kısmı puan getiren yer.
