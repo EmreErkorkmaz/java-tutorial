@@ -20,3 +20,4 @@ Güncel durum ve kalan işler: [ROADMAP.md](../ROADMAP.md)
 | [faz5-docker-devops.md](faz5-docker-devops.md) | Multi-stage Dockerfile, compose, env bazlı konfigürasyon, GitHub Actions CI, Actuator |
 | [faz6-ikinci-servis.md](faz6-ikinci-servis.md) | order-service, senkron REST çağrısı, timeout/retry/bulkhead, dağıtık N+1, token propagation, HS256'nın sınırı |
 | [faz7-event-driven.md](faz7-event-driven.md) | RabbitMQ, notification-service consumer, idempotency (dedup), DLQ + poison message, outbox/saga/Kafka teorisi |
+| [faz8-mimari-olgunluk.md](faz8-mimari-olgunluk.md) | Redis cache-aside, distributed tracing (Zipkin), nginx API gateway + rate limiting, CAP teoremi, system design egzersizleri, sekiz maddelik mimari karar konuları (teach-back) |

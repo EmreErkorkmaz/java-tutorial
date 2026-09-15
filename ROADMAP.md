@@ -10,26 +10,30 @@ Java + Spring Boot ve genel backend/mimari öğrenme sürecinin ilerleme takibi.
 
 ---
 
-## Şu anki durum (2026-09-10)
+## Şu anki durum (2026-09-15)
 
 ```
 java-tutorial/
-├── product-service/      # 8080 — ürün kataloğu, auth (JWT üretimi), productdb
+├── product-service/      # 8080 — ürün kataloğu, auth (JWT üretimi), productdb, Redis cache
 ├── order-service/        # 8081 — sipariş, product-service'e senkron REST, orderdb,
 │                         #        order.created event publisher
 ├── notification-service/ # 8082 — DB'siz, tek @RabbitListener (event consumer)
-├── compose.yaml          # postgres + rabbitmq + üç servis, hepsi healthcheck'li
+├── nginx/nginx.conf       # tek giriş noktası (:8090) — routing + rate limiting
+├── compose.yaml          # postgres + rabbitmq + redis + zipkin + gateway + üç servis
 ├── docker/init-db.sql    # orderdb'yi oluşturur (yalnızca boş volume'de çalışır)
 └── notes/                # faz notları + kartlar.md (quiz kaynağı)
 ```
 
-Stack: Spring Boot 4.1.0, Java 21, Maven, PostgreSQL 18, Flyway, Spring Security (JWT HS256), RabbitMQ 4, Testcontainers, GitHub Actions (matrix ile üç servis paralel).
+Stack: Spring Boot 4.1.0, Java 21, Maven, PostgreSQL 18, Flyway, Spring Security (JWT HS256), RabbitMQ 4, Redis 8, Zipkin (Micrometer Tracing + Brave), nginx (API gateway), Testcontainers, GitHub Actions (matrix ile üç servis paralel).
 
 | Komut | Ne yapar |
 |---|---|
 | `docker compose up -d --build` | Tüm yığın (kök dizinden) |
 | `./mvnw clean verify` | Tek servisin testleri (servis dizininden; Testcontainers kendi Postgres'ini açar) |
 | `product-service/api.http`, `order-service/api.http` | IntelliJ HTTP Client istek koleksiyonu (Ultimate gerektirir; Community'de curl ile) |
+| `http://localhost:8090` | nginx gateway — tek porttan `/api/products`, `/api/orders` |
+| `http://localhost:9411` | Zipkin UI — trace ağacı |
+| `http://localhost:15672` | RabbitMQ management UI |
 
 Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-service'te henüz test yok), CI yeşil.
 
@@ -42,7 +46,7 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 | 5 Docker & DevOps | ✅ [notes/faz5-docker-devops.md](notes/faz5-docker-devops.md) |
 | 6 İkinci servis & senkron iletişim | ✅ [notes/faz6-ikinci-servis.md](notes/faz6-ikinci-servis.md) |
 | 7 Message queue & event-driven | ✅ [notes/faz7-event-driven.md](notes/faz7-event-driven.md) |
-| 8 Mimari olgunluk & system design | 🔶 devam ediyor — 8.1-8.3 ✅, Mimari karar konuları ✅, sırada 8.4 (CAP + system design egzersizleri) |
+| 8 Mimari olgunluk & system design | ✅ [notes/faz8-mimari-olgunluk.md](notes/faz8-mimari-olgunluk.md) |
 | 9 Portfolyo & mülakat hazırlığı | ⬜ |
 
 ## Çalışma tarzı (her oturumda geçerli)
@@ -101,83 +105,6 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 - [ ] **Kubernetes temelleri** — [teori] pod/service/deployment, ne zaman gerekir.
 - [ ] **Prometheus + Grafana** — [opsiyonel] Faz 8.2 (tracing) ile aynı oturumda değerlendirilir; Actuator zaten ayakta.
 - [ ] **Image registry'e push + deploy** — [uygulama] Faz 9'daki portfolyo projesiyle birleştirilecek (bkz. 9.1).
-
----
-
-## Faz 8 — Mimari olgunluk & system design
-
-Üç uygulama maddesi birbirinden bağımsız, sırası değişebilir.
-
-### 8.1 Redis cache — cache-aside — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-11)
-
-**Sonuç:** canlı ölçüldü — cache miss 1 sorgu, sonraki istekler 0 sorgu, `PUT` sonrası evict doğru çalıştı (bayat veri dönmedi), TTL (60s) dolunca tekrar DB'ye gitti. Yol boyunca gerçek bir tuzak çıktı: `ProductResponse` (record, implicit `final`) `GenericJacksonJsonRedisSerializer` ile cache'lenince tip bilgisi JSON'a gömülmedi (Jackson'ın `DefaultTyping.NON_FINAL`'i final sınıfları atlıyor), geri okumada `ClassCastException`. Çözüm: tek bilinen tip için `JacksonJsonRedisSerializer<ProductResponse>` (non-generic, tipi constructor'da belirten serializer). Ayrıca `@EnableCaching` `ProductControllerTest`'i (`@WebMvcTest`) bozdu — slice cache autoconfig'i yüklemiyor, `CacheManager` bean'i bulunamadı; `@MockitoBean CacheManager` eklenerek düzeltildi (Faz 7.1'deki `RabbitTemplate` testi bozması ile aynı desen). Kartlar: `notes/kartlar.md`.
-
-**Problem:** Aynı ürün tekrar tekrar okunuyor ve her seferinde DB'ye gidiyor. Önce **ölçülür**: `spring.jpa.show-sql` açıkken aynı `GET /api/products/{id}` çağrısı N kez → N sorgu. (Faz 3'teki N+1 ile aynı refleks: önce logda gör, sonra çöz.)
-
-**Yaklaşım:** Cache-aside — uygulama önce cache'e bakar, yoksa DB'den okur ve cache'e yazar. Write-through'a göre daha basit ve cache çökse de sistem çalışır; bedeli ilk isteğin (cold miss) yavaş olması ve **invalidation sorumluluğunun uygulamada kalması**.
-
-**Dosyalar:** `product-service/pom.xml` (`spring-boot-starter-data-redis`, `spring-boot-starter-cache`), `config/CacheConfig.java` (TTL — süresiz cache yok), `service/ProductService.java` (`@Cacheable` / `@CacheEvict`), `compose.yaml` (`redis:8-alpine`).
-
-**Tuzaklar:** (1) Entity değil **DTO** cache'le — `Product` lazy `category` proxy'si taşıyor, serialize edilirken patlar veya OSIV kapalı olduğu için `LazyInitializationException` verir. (2) `@Cacheable` de proxy tabanlı: self-invocation'da çalışmaz (Faz 3'teki `@Transactional` tuzağının aynısı). (3) `Page` dönen liste endpoint'i cache'lenmez — key patlaması.
-
-**Kabul kriteri:** İkinci okuma SQL üretmiyor (logda sorgu yok); `PUT`/`DELETE` sonrası okuma **bayat veri dönmüyor**; TTL dolunca tekrar DB'ye gidiyor.
-
-**Ölçüm:** Aynı endpoint'e 10 istek, öncesi/sonrası sorgu sayısı ve süre.
-
-**Not al:** Cache invalidation zor olduğu için değil, **doğruluk sınırı belirsiz** olduğu için zor: ne kadar bayat veri kabul edilebilir sorusunun cevabı teknik değil, ürün kararıdır.
-
-### 8.2 Distributed tracing — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-11)
-
-**Sonuç:** Kapsam üçe (order+product+notification) genişletildi — Spring AMQP'nin observation desteği (`spring.rabbitmq.template.observation-enabled` / `...listener.simple.observation-enabled`) sayesinde tek `traceId` hem senkron HTTP sınırını (Faz 6) hem asenkron RabbitMQ sınırını (Faz 7) geçti; Zipkin'de doğrulandı: `product-service`'in span'i `order-service`'in `http get` span'inin, `notification-service`'in span'i `order-service`'in publish span'inin doğrudan çocuğu. Yol boyunca roadmap'in orijinal planından üç fark çıktı: (1) tek dependency yeter (`spring-boot-starter-zipkin`, ayrı `micrometer-tracing-bridge-brave`+`zipkin-reporter-brave` gerekmiyor), (2) Zipkin endpoint property'si `management.tracing.export.zipkin.endpoint` (eski `management.zipkin.tracing.endpoint` değil), (3) log'a `traceId`/`spanId` otomatik ekleniyor, elle pattern değiştirmeye gerek yok. Ayrıca gerçek bir eksik bağımlılık çıktı: `spring-boot-starter-webmvc` (sunucu) `RestClient.Builder`'ın auto-configure edildiği modülü (`spring-boot-starter-restclient`, istemci) içermiyor — `order-service` context'i hiç açılamadı, eklenince düzeldi. Kartlar: `notes/kartlar.md`.
-
-**Problem:** Bir sipariş isteği iki servise yayılıyor. Yavaşlık veya hata olduğunda iki ayrı log dosyasına bakıp isteği elle eşleştirmek gerekiyor — üçüncü servis (notification) eklendikten sonra bu iyice imkânsız.
-
-**Yaklaşım:** Micrometer Tracing + Brave; her istek bir `traceId` alır ve servis sınırını HTTP header'ı ile geçer, span'lar Zipkin'de tek ağaç olarak toplanır. Faz 6'daki token propagation ile aynı ders: **bağlam servis sınırını kendiliğinden geçmez, taşınır.**
-
-**Dosyalar:** iki (veya üç) servisin `pom.xml`'i (`micrometer-tracing-bridge-brave`, `zipkin-reporter-brave`), `application.properties` (`management.tracing.sampling.probability`, logging pattern'e `traceId`/`spanId`), `compose.yaml` (`openzipkin/zipkin`).
-
-**Tuzak (doğrulandı, iş çıkacak):** `RestClientConfig.java:31` istemciyi **statik** `RestClient.builder()` ile kuruyor — Spring'in yönettiği `RestClient.Builder` değil, yani observation registry bağlı değil ve trace header'ı **taşınmaz**. Enjekte edilen `RestClient.Builder`'a geçilecek; timeout'lu `requestFactory` ve token interceptor'ı korunacak. Aynı şekilde `@Async`/executor'a geçen iş de bağlamı kaybeder (ThreadLocal — Faz 6'da `SecurityContextHolder` için aynısını gördük).
-
-**Kabul kriteri:** Zipkin UI'da bir sipariş oluşturma isteği, `order-service` → `product-service` span'leriyle **tek trace** olarak görünüyor; log satırlarında aynı `traceId` var.
-
-**Not al:** Sampling oranı maliyet kararıdır: %100 trace üretim yükünü ve depolamayı ciddi artırır, %1 nadir hatayı kaçırır.
-
-### 8.3 API Gateway — [uygulama] [~1 oturum] ✅ tamamlandı (2026-09-12)
-
-**Problem:** İstemci iki (yakında üç) ayrı porta gitmek zorunda; rate limiting Faz 4'te **uygulama içinde** yazıldı (`LoginAttemptService`) ve orada notunu düştük: instance başına ayrı çalışır, restart'ta sıfırlanır — **yanlış katman**.
-
-**Risk gerçekleşti:** Roadmap'in önceden yazdığı risk aynen çıktı — Spring Cloud Gateway (4.3.0 / `spring-cloud 2025.0.0`) Boot 4.1.0 ile `NoClassDefFoundError` verdi, minimal bir probe uygulamasında bile context açılmadı (canlı test edildi). **nginx reverse proxy'ye** indirgendi.
-
-**Yaklaşım (nginx):** Tek giriş noktası (`:8090`), `location /api/products` ve `/api/orders` `proxy_pass` ile yönlendiriyor; `limit_req_zone` ile IP bazlı rate limiting (10r/s, burst 5) — Faz 4'teki `LoginAttemptService`'in doğru katıma taşınmış hâli. Auth'un gateway'e taşınması **teoride** kaldı: gateway token'ı doğrulayıp servisleri sadeleştirebilir, ama servisler "gateway'den geldi" varsayımına bağlanırsa iç ağdan gelen istek korumasız kalır (defense in depth ihlali) — rate limit testinde bu risk **canlı görüldü**: gateway limit'e girerken doğrudan servise (8080) atılan istek sorunsuz geçti.
-
-**Dosyalar:** `nginx/nginx.conf`, `compose.yaml` (`gateway` servisi, nginx:1.27-alpine).
-
-**Tuzak (canlı yaşandı):** `location /api/products/` (sonunda `/`) `/api/products` isteğiyle eşleşmiyor — prefix eşleşmesi kısa string'in uzun string'i "içerdiği" değil "başlattığı" mantığıyla çalışır. Sonunda `/` kaldırılarak düzeltildi.
-
-**Kabul kriteri:** ✅ Tek porttan (`:8090`) hem `/api/products` hem `/api/orders` çalışıyor; hızlı art arda istek 429 aldı; **aynı anda** doğrudan `product-service`'e (8080) atılan istek 200 döndü (gateway'in limiti sadece kendinden geçen trafiği görüyor).
-
-### 8.4 Dağıtık sistem teorisi — [teori] (2026-09-10'da budandı)
-
-- [ ] CAP teoremi, eventual consistency, idempotency, split-brain.
-- [ ] Klasik system design egzersizleri (URL shortener, rate limiter, feed, bildirim sistemi) — çizim + trade-off tartışması.
-- [ ] Service discovery + merkezi konfigürasyon — **tek paragraf**, ayrı madde değil: bizim `PRODUCT_SERVICE_BASE_URL` yaklaşımı (env variable + compose DNS) küçük ölçekte yeterli; Eureka/Spring Cloud Config dinamik instance sayısı ve çok ortamlı deploy olunca gerekir. Kavramı bilmek yeter, kurmak Faz 9 için gereksiz.
-
-### Mimari karar konuları — **Faz 8'in ana malzemesi**, kuyruğu değil ✅ tamamlandı (2026-09-14)
-
-Öncelik kararı (2026-09-10): solutions-architecture hedefi için **mülakat getirisi en yüksek blok burasıdır**. 8.1-8.3'ün uygulama maddeleri bu tartışmaların somut çapası olarak var; asıl iş bu listede.
-
-Format: **teach-back** — her madde bir mülakat sorusu gibi sorulur, Emre cevaplar, zorlayıcı follow-up gelir, eksik kalan tamamlanır ve kart olarak `notes/kartlar.md`'ye düşer. Her biri "hangi durumda hangisi ve neden" formatında, **bu projedeki somut bir karara bağlanarak**.
-
-**Sonuç:** Sekiz maddenin sekizi de işlendi, üç turda toparlanan iki tanesi hariç ilk/ikinci turda oturdu — **runtime/dil seçimi** (I/O-bound vs CPU-bound karışıklığı düzeltildi) ve **build vs buy** (sosyal login ile genel IdP gerekçesi karışmıştı, düzeltildi) üç turda net kapandı. Hepsi kart oldu.
-
-- [x] **Runtime/dil seçimi** — iş yükünün şekli belirler: I/O-yoğun + çok bağlantı → Node (event loop); CPU-yoğun veya ağır domain/transaction → Go/Java/Rust. JVM warm-up serverless'ta maliyet, Go tek binary ile container'da avantaj. Pratikte ekip bilgisi ve ekosistem teknik farktan baskın.
-- [x] **Eşzamanlılık modelleri** — tek thread + event loop vs thread-per-request; bloklamanın maliyeti; thread-safety (Java'da gerekli, Node'da değil); Java 21 virtual threads farkı nasıl kapatıyor. → Bağlanacağı karar: Faz 6'daki `@ConcurrencyLimit(20)` bulkhead'i (yol boyunca gerçek bir kod hatası bulundu: varsayılan politika `REJECT` değil `BLOCK`'tu, düzeltildi).
-- [x] **Senkron vs asenkron iletişim** — → Faz 7.1'deki ayrım (fiyat senkron, bildirim event).
-- [x] **Veri tutarlılığı** — güçlü vs eventual; saga, outbox; dağıtık sistemde foreign key'in kaybı. → `order_item.product_id`'nin neden FK olmadığı.
-- [x] **Ölçekleme asimetrisi** — stateless app yatayda ucuz, database değil; read replica, cache, sharding sırası ve maliyetleri. → 8.1'deki cache bu sıranın ilk adımı.
-- [x] **Cache stratejileri** — cache-aside vs write-through; invalidation; stale data ne zaman kabul edilebilir. → 8.1.
-- [x] **Monolit → mikroservis geçiş kararı** — ne zaman bölünür, ne zaman bölünmez; dağıtık monolit anti-pattern'i. → İki servisimizin bize ödettiği bedel (dağıtık N+1, token propagation, ayrı DB).
-- [x] **Build vs buy** — auth (IdP), ödeme, arama, bildirim. → Faz 4'te auth'u kendimiz yazdık ama production'da yazılmayacağının notunu düştük.
 
 ---
 

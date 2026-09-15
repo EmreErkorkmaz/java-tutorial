@@ -363,3 +363,8 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 
 **S:** "Hangi rate limiting algoritması en iyisi" sorusuna doğru cevap nedir?
 **C:** Tek isim değil — **burst'e izin vermek istiyor musun, hassasiyet mi öncelikli, bellek maliyeti neyi taşıyabiliyor** sorusuna bağlı. Token bucket varsayılan iyi cevap (pratikte en çok kullanılan) ama gerekçesiz söylenirse zayıf kalır — mülakatta "neden" kısmı puan getiren yer.
+
+**S:** "Bir bildirim sistemi tasarla" sorusuna aynı cevap her senaryoda geçerli mi? E-ticaret sipariş bildirimi ile bankacılık ödeme onayını karşılaştır.
+**C:** Hayır — gereksinimler tamamen farklı mimariye götürür. **E-ticaret:** tek kanal (email/push) yeterli, görülmese de sorun değil, gerçek zamanlı gerekmez, kayıp kritik değil → `at-least-once + idempotent consumer` yeterli, **AP'ye yakın** (bildirim gecikse/kaybolsa da sipariş etkilenmemeli). **Bankacılık ödeme onayı:** teslim onayı (delivery receipt) zorunlu, gerçek zamanlı kritik, kayıt asla kaybolmamalı (audit/compliance) → garantili teslim + timeout + retry + değiştirilemez log, **CP'ye yakın** (gerekirse kullanıcıyı bekletir/işlemi iptal eder ama yanlış/eksik bilgi vermez). Kullanıcı OTP'yi görüp girene kadar işlem senkron bekler — event değil, kesin cevap gerektiren bir adım (Faz 6'daki fiyat sorgusuyla aynı sınıf).
+**Çapa:** E-ticaret bildirimi bir kartpostal (gecikse dünya batmaz), ödeme onayı taahhütlü mektup (imzalı teslim şart, teslim edilemezse geri döner).
+**Projede:** Faz 7.2'deki sistemimiz tam olarak e-ticaret ucunda — `notification-service` çökse bile sipariş 201 dönüyor, bildirim gecikmesi kabul edilebilir bir bedel.
