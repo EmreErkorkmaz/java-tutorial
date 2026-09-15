@@ -47,7 +47,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 
 ## Veritabanı & JPA (Faz 3)
 
-**S:** N+1 nedir ve sorgu sayısı neye bağlıdır?
+**S:** `[zayıf]` N+1 nedir ve sorgu sayısı neye bağlıdır? (2026-09-15: "oku-değiştir-yaz" update akışıyla karıştırıldı — N+1, bir liste + her satırın ilişkili verisini döngüyle ayrı ayrı çekmek)
 **C:** İlişkili veriyi döngü içinde tek tek çekmek. Ölçüldü: 20 ürün / 20 farklı kategori → **21 sorgu**. Kritik ayrıntı: sorgu sayısı ürün sayısı değil, **farklı ilişkili kayıt sayısı + 1** (persistence context aynı entity'yi tekrar sorgulamaz). Bu yüzden az veriyle çalışan dev ortamında problem görünmez.
 **Çapa:** Markete 20 kez ayrı ayrı gitmek vs tek listeyle bir kez gitmek.
 **Projede:** Faz 3 — `@EntityGraph(attributePaths = "category")` ile 21 → 1 sorgu.
@@ -304,7 +304,7 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **Çapa:** Kargo takip numarası — aynı numara her durakta görünür.
 **Projede:** Faz 8.2 — Zipkin'de canlı doğrulandı: tek `traceId`, üç servis. `product-service`'in span'i `order-service`'in `http get` span'inin (senkron, Faz 6), `notification-service`'in span'i `order-service`'in publish span'inin (asenkron, Faz 7 — RabbitMQ observation açılarak) doğrudan çocuğu.
 
-**S:** Spring'in yönettiği bir nesne (`RestClient.Builder` gibi) ile kendi kurduğun bir nesne (`RestClient.builder()`) arasındaki fark tracing'i nasıl etkiler?
+**S:** `[zayıf]` Spring'in yönettiği bir nesne (`RestClient.Builder` gibi) ile kendi kurduğun bir nesne (`RestClient.builder()`) arasındaki fark tracing'i nasıl etkiler? (2026-09-15: soru yerine tracing'in genel faydaları anlatıldı — "Spring sadece kendi yönettiği nesneye özellik ekleyebilir" cevabı hâlâ gelmedi)
 **C:** Boot, tracing/observation desteğini yalnızca **kendi yönettiği** (context'e bean olarak kayıtlı) nesnelere otomatik özellik ekleyebilir — `RestClient.Builder`'ı inject edip kullanırsan Boot ona bir `ObservationRestClientCustomizer` uygular, bu da her giden isteğe `traceId`/`spanId` header'ını otomatik ekler. Statik `RestClient.builder()` ile elle kurduğun bir istemci Spring'in hiç haberi olmayan bir nesnedir — hiçbir otomatik özellik ona uygulanmaz, trace zinciri tam o noktada kopar.
 **Çapa:** Aynı self-invocation dersi, farklı kılıkta: Spring sadece **kendi elinden geçen** nesneleri geliştirebilir, arkadan gizlice kurduğun bir nesneye hiçbir şey ekleyemez.
 **Projede:** Faz 8.2 — `RestClientConfig.java`, `RestClient.builder()` → injected `RestClient.Builder`. Düzeltilmeden önce `product-service`'e giden çağrılar trace'e hiç girmiyordu.
@@ -335,7 +335,7 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **Çapa:** Concurrency = bir aşçının birden fazla tencereyi aynı anda kaynatıp aralarında gidip gelmesi. Parallelism = birden fazla aşçının, her biri kendi tezgahında, gerçekten aynı anda pişirmesi.
 **Projede:** `ProductClient.java` — `@ConcurrencyLimit(20)` (bulkhead) Java'nın thread-per-request modeline dayanıyor. Java 21 virtual thread'ler I/O-bound iş için Node'un event loop'una yakın bir hafiflik sağlıyor, CPU-bound için gerçek paralellik avantajı JVM'de kalıyor.
 
-**S:** `[zayıf]` Dağıtık monolit nedir, nasıl ortaya çıkar? (2026-09-14: monorepo yapısıyla karıştırıldı — "aynı repo, nginx ile bağımsız deploy" dendi, bu aslında sorunun kendisi değil, mikroservisin kazanmak istediği şey)
+**S:** Dağıtık monolit nedir, nasıl ortaya çıkar? (2026-09-15'te sebepler doğru geldi — paylaşılan DB, bağımlı deployment — `[zayıf]` düştü; sonucu da ekle: mikroservisin karmaşıklığını alıp faydasını almamak)
 **C:** Servisleri ayrı deploy edilebilir birimlere böldün, ama birbirlerine o kadar sıkı bağlılar ki **bağımsız deploy/ölçekleyemiyorsun** — mikroservisin tüm operasyonel yükünü (ağ, serialization, dağıtık debug) alıyorsun, hiçbir faydasını (bağımsızlık) almıyorsun. Klasik sebepleri: **paylaşılan veritabanı**, **lockstep deploy zorunluluğu**, **döngüsel bağımlılıklar**. Monorepo (aynı repo'da birden fazla servis) bununla ilgisiz — bir repo yapısı kararı, coupling kararı değil.
 **Çapa:** Ayrı evlere taşınmışsın ama tek anahtarı paylaşıyorsun — resmi olarak ayrısınız, gerçekte hâlâ birbirinize muhtaçsınız.
 **Projede:** Faz 6 devir notu — `order-service` ve `product-service` aynı `product` DB kullanıcısını paylaşıyor. Tam bir dağıtık monolit değiliz (ayrı veritabanları, bağımlılık keyfi değil gerçek bir ihtiyaçtan — fiyat bilgisi) ama bu paylaşılan kullanıcı küçük bir koku.
