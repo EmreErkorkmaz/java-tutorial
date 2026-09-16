@@ -72,7 +72,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **Çapa:** Kendi ofisinden kendine telefon etmek — santral (proxy) araya girmez, yani santralin yaptığı hiçbir şey olmaz.
 **Projede:** Faz 3'te `@Transactional` için görüldü; Faz 8.1'de `@Cacheable` için aynısı geçerli olacak.
 
-**S:** `[zayıf]` OSIV (open-in-view) nedir, kapatınca ne oldu ve ne kazandık? (2026-09-16: hiç hatırlanmadı)
+**S:** `[zayıf]` OSIV (open-in-view) nedir, kapatınca ne oldu ve ne kazandık? (2026-09-16 tur 2: `@EntityGraph`'la karıştırıldı — OSIV oturumun NE KADAR SÜRE açık kaldığı, `@EntityGraph` hangi ilişkinin JOIN'le geleceği; ikisi ayrı katman)
 **C:** Açıkken Hibernate oturumu isteğin sonuna kadar açık kalır, lazy alanlar controller'da bile yüklenebilir. Kapattığımızda `GET /api/products/{id}` 500 verdi (`LazyInitializationException`) — yani OSIV, `findById`'de **eksik olan fetch planını maskeliyormuş**. Kazanç: DB bağlantısı isteğin sonuna kadar tutulmuyor ve ne yükleneceği servis katmanında bilinçli karar oluyor.
 **Projede:** Faz 3 — `spring.jpa.open-in-view=false`; Faz 8.1'de cache'lenecek şeyin entity değil **DTO** olmasının sebebi de bu (lazy proxy serialize edilemez).
 
@@ -352,7 +352,7 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 
 ## System design egzersizleri (Faz 8.4)
 
-**S:** `[zayıf]` CAP teoreminde gerçek seçim neden "üçünden ikisi" değil? (2026-09-16: C ve A tanımları doğru geldi, P "load balance/stateless" ile karıştırıldı, "P sabit" çerçevesi hiç gelmedi)
+**S:** CAP teoreminde gerçek seçim neden "üçünden ikisi" değil? (2026-09-16 tur 2'de trade-off doğru geldi — "geç ama doğru=C, hızlı=A" — küçük etiket hatası: "C-P arası" değil "C-A arası" denmeli, P zaten sabit)
 **C:** Consistency (her okuma en son yazılanı görür), Availability (her istek cevap alır, güncel olmasa da), Partition tolerance (node'lar arası ağ kopsa bile sistem çalışmaya devam eder). Gerçek dağıtık sistemlerde ağ bölünmesi **er ya da geç olur** — bu bir seçenek değil, bir gerçek. Yani P'yi seçmezsin, P zaten var. Asıl karar bölünme **olduğunda**: cevap vermeyi reddedip tutarlı mı kalırsın (**CP**), yoksa bayat da olsa cevap mı verirsin (**AP**).
 **Çapa:** P bir seçenek değil, hava durumu gibi — erken ya da geç yağmur yağar. Gerçek soru şemsiyeni mi açarsın (CP, ıslanma riskini göze alma), yoksa yürümeye devam mı edersin (AP, biraz ıslan ama dur kalma).
 **Projede:** RabbitMQ'nun kendisi düştüğünde yaşadığımız 500 + DB'de yetim sipariş (Faz 7) — sistemimiz AP'ye yakın durduğumuzun kanıtı, sipariş kabul etmeyi (availability) anlık tam tutarlılığa tercih ettik.
