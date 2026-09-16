@@ -388,3 +388,12 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 
 **S:** Java'da enhanced for-loop (`for (Point p : set)`) perde arkasında ne yapıyor?
 **C:** `Iterable` interface'ini implement eden her koleksiyon (Set, List, ...) bir `Iterator` sağlar (`hasNext()`/`next()`). Enhanced for-loop bunun **syntactic sugar**'ı: `Iterator<Point> it = set.iterator(); while (it.hasNext()) { Point p = it.next(); ... }`'in kısa yazımı. Her turda `p`'ye koleksiyondaki bir sonraki nesnenin **referansı** atanır (kopyası değil) — JS'teki `for (const p of set)` ile aynı fikir.
+
+**S:** Bir sınıfı tam olarak immutable yapmak için neler gerekir, sınıfın kendisinin `final` olması ne katıyor?
+**C:** Tarif: sınıf `final`, tüm alanlar `private final`, setter yok, mutable bir alan tutuluyorsa (liste, tarih) constructor'da/getter'da defensive copy. Sınıfın **kendisinin** `final` olması ayrı bir garanti: alt sınıf türetilemez. `final` olmasaydı biri `extends` edip bir setter **ekleyebilir** ya da davranışı override edip mutable hale getirebilirdi — elinde "immutable" sandığın referans aslında gizlice mutasyona açık bir alt sınıf olabilirdi.
+**Çapa:** final class = tek baskısı yapılmış bir kitap, kimse ek bölüm ekleyip "aynı kitap" diye satamaz.
+**Projede:** Aynı mekanizma iki farklı yerde karşımıza çıktı: CGLIB proxy alt sınıf üreterek çalışıyor, `final` sınıfı proxy'leyemiyor — bu yüzden Java record'ları (implicit final) `@Cacheable`/`@Transactional` ile proxy'lenemiyor (Faz 8.1).
+
+**S:** Immutability'nin thread-safety ile ilişkisi ne?
+**C:** Tehlike, birden fazla thread'in **aynı mutable nesneye** referans tutup biri yazarken diğeri okuduğunda ortaya çıkar (race condition — yarı güncellenmiş/torn değer okunabilir). Çözüm ya kilit (`synchronized`, yavaşlatır + deadlock riski) ya da nesneyi immutable yapmak — immutable nesnede "değişme anı" olmadığı için hiçbir thread'in beklemesine gerek kalmaz, herkes senkronizasyonsuz okuyabilir.
+**Çapa:** Mutable paylaşılan nesne = ortak beyaz tahta, biri silip yazarken diğeri okumaya çalışıyor. Immutable nesne = basılmış kitap, kaç kişi okursa okusun kimse birbirini bozmaz.
