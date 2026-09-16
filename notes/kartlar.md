@@ -72,7 +72,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **Çapa:** Kendi ofisinden kendine telefon etmek — santral (proxy) araya girmez, yani santralin yaptığı hiçbir şey olmaz.
 **Projede:** Faz 3'te `@Transactional` için görüldü; Faz 8.1'de `@Cacheable` için aynısı geçerli olacak.
 
-**S:** OSIV (open-in-view) nedir, kapatınca ne oldu ve ne kazandık?
+**S:** `[zayıf]` OSIV (open-in-view) nedir, kapatınca ne oldu ve ne kazandık? (2026-09-16: hiç hatırlanmadı)
 **C:** Açıkken Hibernate oturumu isteğin sonuna kadar açık kalır, lazy alanlar controller'da bile yüklenebilir. Kapattığımızda `GET /api/products/{id}` 500 verdi (`LazyInitializationException`) — yani OSIV, `findById`'de **eksik olan fetch planını maskeliyormuş**. Kazanç: DB bağlantısı isteğin sonuna kadar tutulmuyor ve ne yükleneceği servis katmanında bilinçli karar oluyor.
 **Projede:** Faz 3 — `spring.jpa.open-in-view=false`; Faz 8.1'de cache'lenecek şeyin entity değil **DTO** olmasının sebebi de bu (lazy proxy serialize edilemez).
 
@@ -94,7 +94,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** Authentication ve authorization farkı, HTTP karşılıkları?
 **C:** Authentication = "sen kimsin" → **401**. Authorization = "bunu yapabilir misin" → **403**. 401 kimlik eksik/geçersiz, 403 kimlik var ama yetki yok.
 
-**S:** Encoding, hashing, encryption ve signature arasındaki fark? (2026-09-11'de doğru cevaplandı: "base64 şifreleme değil, format; imza bütünlüğü doğrular" — `[zayıf]` düştü)
+**S:** `[zayıf]` Encoding, hashing, encryption ve signature arasındaki fark? (2026-09-11'de doğru gelmişti, 2026-09-16'da HS256 sorusunda regresyon oldu — "JWT'yi secret ile şifreliyoruz" dendi, imza ≠ şifreleme ayrımı tekrar bulanıklaştı)
 **C:** **Encoding** (base64) geri döndürülebilir, güvenlik değil taşıma formatı — JWT payload'ı budur, herkes okuyabilir. **Hashing** (BCrypt) tek yönlü, şifre saklamak için. **Encryption** anahtarla geri döndürülebilir, veriyi gizlemek için. **Signature** (HMAC/RSA) bütünlük + kaynak doğrular ama **gizlilik sağlamaz**.
 **Çapa:** Encoding = şeffaf zarf · hashing = kıyma makinesi (geri döndüremezsin) · encryption = kasa (anahtarı olan açar) · signature = mühür (içeriği gizlemez, sahteliği gösterir).
 **Projede:** Faz 4 — BCrypt (hash) + HS256 (signature); JWT payload'ı base64, gizli veri konmaz.
@@ -126,7 +126,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **S:** JWT'ye rol koyduk — yetki değişikliği ne zaman etkili olur?
 **C:** Ancak kullanıcı yeniden login olduğunda. Roller token'ın içinde taşındığı için, admin yetkisini geri aldığında kullanıcı token ömrü boyunca (bizde 15 dk) hâlâ yetkili davranır. Stateless token'ın iptal edilemezliğinin somut sonucu budur.
 
-**S:** HS256'nın çok servisli mimarideki sınırı nedir?
+**S:** `[zayıf]` HS256'nın çok servisli mimarideki sınırı nedir? (2026-09-16: BCrypt/encryption/signature üçü birbirine karıştı — "parola şifreleme" dendi, asıl sınır olan "doğrulama=üretme" hiç bahsedilmedi)
 **C:** Simetrik imzada **doğrulama yeteneği = üretme yeteneği**. Token'ı doğrulaması için sırrı verdiğin her servis token da basabilir; biri ele geçirilirse blast radius tüm sistem. Çözüm RS256 + JWKS: private key yalnızca üreticide, servisler public key ile sadece doğrular.
 **Projede:** Faz 6'da canlı gösterildi — `order-service`'in sırrıyla sahte `ROLE_ADMIN` token'ı üretildi, gerçek kullanıcı 403 alırken sahte token **201** aldı.
 
@@ -351,6 +351,11 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **Projede:** Kullanmıyoruz — klasik katmanlı mimarideyiz (`ProductService`, Spring Data JPA'nın `ProductRepository`'sine **doğrudan** bağımlı). Hexagonal'da bu bir port olurdu, JPA implementasyonu ayrı bir infrastructure paketinde kalırdı. Değer kazandığı yer: iş mantığı gerçekten karmaşık olduğunda ya da altyapıyı değiştirmeyi gerçekten beklediğinde — küçük/orta CRUD sistemlerde genelde gereksiz ekstra katman.
 
 ## System design egzersizleri (Faz 8.4)
+
+**S:** `[zayıf]` CAP teoreminde gerçek seçim neden "üçünden ikisi" değil? (2026-09-16: C ve A tanımları doğru geldi, P "load balance/stateless" ile karıştırıldı, "P sabit" çerçevesi hiç gelmedi)
+**C:** Consistency (her okuma en son yazılanı görür), Availability (her istek cevap alır, güncel olmasa da), Partition tolerance (node'lar arası ağ kopsa bile sistem çalışmaya devam eder). Gerçek dağıtık sistemlerde ağ bölünmesi **er ya da geç olur** — bu bir seçenek değil, bir gerçek. Yani P'yi seçmezsin, P zaten var. Asıl karar bölünme **olduğunda**: cevap vermeyi reddedip tutarlı mı kalırsın (**CP**), yoksa bayat da olsa cevap mı verirsin (**AP**).
+**Çapa:** P bir seçenek değil, hava durumu gibi — erken ya da geç yağmur yağar. Gerçek soru şemsiyeni mi açarsın (CP, ıslanma riskini göze alma), yoksa yürümeye devam mı edersin (AP, biraz ıslan ama dur kalma).
+**Projede:** RabbitMQ'nun kendisi düştüğünde yaşadığımız 500 + DB'de yetim sipariş (Faz 7) — sistemimiz AP'ye yakın durduğumuzun kanıtı, sipariş kabul etmeyi (availability) anlık tam tutarlılığa tercih ettik.
 
 **S:** Dağıtık rate limiting'de nginx'in `limit_req_zone`'u neden yetmez?
 **C:** Her gateway instance'ı kendi belleğinde **ayrı** sayar, birbirini görmez — 3 instance varsa kullanıcı limitin 3 katını geçirebilir (her instance kendi 100'üne kadar sayar). Aynı kalıp: Faz 4'teki `LoginAttemptService` (instance başına ayrı sayaç) ve `container_name` sabit olduğu için `--scale` yapamamamız. Çözüm: sayacı **paylaşılan, atomik** bir depoya (Redis, `INCR`) taşımak — hangi gateway sorarsa sorsun aynı sayıyı görür.
