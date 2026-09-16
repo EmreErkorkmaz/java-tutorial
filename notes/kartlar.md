@@ -373,3 +373,18 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **C:** Hayır — gereksinimler tamamen farklı mimariye götürür. **E-ticaret:** tek kanal (email/push) yeterli, görülmese de sorun değil, gerçek zamanlı gerekmez, kayıp kritik değil → `at-least-once + idempotent consumer` yeterli, **AP'ye yakın** (bildirim gecikse/kaybolsa da sipariş etkilenmemeli). **Bankacılık ödeme onayı:** teslim onayı (delivery receipt) zorunlu, gerçek zamanlı kritik, kayıt asla kaybolmamalı (audit/compliance) → garantili teslim + timeout + retry + değiştirilemez log, **CP'ye yakın** (gerekirse kullanıcıyı bekletir/işlemi iptal eder ama yanlış/eksik bilgi vermez). Kullanıcı OTP'yi görüp girene kadar işlem senkron bekler — event değil, kesin cevap gerektiren bir adım (Faz 6'daki fiyat sorgusuyla aynı sınıf).
 **Çapa:** E-ticaret bildirimi bir kartpostal (gecikse dünya batmaz), ödeme onayı taahhütlü mektup (imzalı teslim şart, teslim edilemezse geri döner).
 **Projede:** Faz 7.2'deki sistemimiz tam olarak e-ticaret ucunda — `notification-service` çökse bile sipariş 201 dönüyor, bildirim gecikmesi kabul edilebilir bir bedel.
+
+## Java/Spring mülakat soruları (Faz 9.3)
+
+**S:** `equals` override edilip `hashCode` edilmezse ne olur, `HashSet`/`HashMap` neden bundan etkilenir?
+**C:** `Object`'in varsayılan `equals()`'ı `==` gibi davranır (bellek adresi karşılaştırır); override edersen içerik bazlı hale getirirsin. Ama `HashMap`/`HashSet` önce `hashCode()`'a bakıp hangi "kovaya" (bucket) bakacağına karar verir, sonra o kovada `equals()` ile tek tek karşılaştırır. `equals`'ı override edip `hashCode`'u etmezsen: içerik olarak eşit iki nesnenin `hashCode`'u (varsayılan, adres bazlı) **farklı** kalır → `Set` yanlış kovaya bakar → içerik olarak eşit bir nesne eklenmiş olsa bile `contains()` onu **bulamaz**. Sözleşme: `a.equals(b)` `true` ise `a.hashCode() == b.hashCode()` de `true` olmak zorunda (tersi şart değil — eşit hashCode eşit nesne demek değil, hash çakışması olabilir).
+**Çapa:** Kütüphanede kitabı yanlış rafa (hashCode) koymak gibi — kitap (nesne) fiziksel olarak orada duruyor ama doğru rafa bakmayan biri asla bulamaz.
+**Projede:** Java record'ları (`OrderCreatedEvent`, `ProductResponse`) `equals`/`hashCode`'u tüm alanlara göre otomatik üretir — bu kodu hiç elle yazmadık.
+
+**S:** `HashSet`'e eklenen bir nesnenin `hashCode`'unu etkileyen bir alanı sonradan değiştirirsen ne olur?
+**C:** `Set`, nesneyi **eklendiği anda hesaplanan** hashCode'a göre bir kovaya yerleştirir ve bunu **bir daha güncellemez**. Nesneyi sonradan mutasyona uğratırsan, `contains()`/`remove()` **şimdiki** (yeni) hashCode'u hesaplayıp **yanlış** kovaya bakar — nesne set'in içinde fiziksel olarak duruyor olsa bile bulunamaz. İterasyon (`for`) her kovayı tek tek gezdiği için nesneyi yine de bulur — sadece hash bazlı arama (`contains`) kırılır.
+**Çapa:** Posta kodunu değiştirip aynı eve taşınmamak gibi — mektup (arama) artık eski koda göre başka bir mahalleye gidiyor, ev (nesne) hâlâ yerinde.
+**Projede:** Bu yüzden `HashMap`/`HashSet` key'leri **immutable** olmalı — record'ların hem otomatik `equals`/`hashCode`'u hem değiştirilemez alanları olması bu tuzağa yapısal olarak kapalı olmalarını sağlıyor.
+
+**S:** Java'da enhanced for-loop (`for (Point p : set)`) perde arkasında ne yapıyor?
+**C:** `Iterable` interface'ini implement eden her koleksiyon (Set, List, ...) bir `Iterator` sağlar (`hasNext()`/`next()`). Enhanced for-loop bunun **syntactic sugar**'ı: `Iterator<Point> it = set.iterator(); while (it.hasNext()) { Point p = it.next(); ... }`'in kısa yazımı. Her turda `p`'ye koleksiyondaki bir sonraki nesnenin **referansı** atanır (kopyası değil) — JS'teki `for (const p of set)` ile aynı fikir.
