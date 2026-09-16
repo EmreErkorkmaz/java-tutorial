@@ -72,7 +72,7 @@ Kağıt defterin **aranabilir dijital ikizi**. Elle yazmaya devam ediyorsun (yaz
 **Çapa:** Kendi ofisinden kendine telefon etmek — santral (proxy) araya girmez, yani santralin yaptığı hiçbir şey olmaz.
 **Projede:** Faz 3'te `@Transactional` için görüldü; Faz 8.1'de `@Cacheable` için aynısı geçerli olacak.
 
-**S:** `[zayıf]` OSIV (open-in-view) nedir, kapatınca ne oldu ve ne kazandık? (2026-09-16 tur 2: `@EntityGraph`'la karıştırıldı — OSIV oturumun NE KADAR SÜRE açık kaldığı, `@EntityGraph` hangi ilişkinin JOIN'le geleceği; ikisi ayrı katman)
+**S:** OSIV (open-in-view) nedir, kapatınca ne oldu ve ne kazandık? (2026-09-16 tur 3'te netleşti: "servis katmanından çıkınca bağlantı kapanır, isteğin sonuna kadar değil" — `[zayıf]` düştü)
 **C:** Açıkken Hibernate oturumu isteğin sonuna kadar açık kalır, lazy alanlar controller'da bile yüklenebilir. Kapattığımızda `GET /api/products/{id}` 500 verdi (`LazyInitializationException`) — yani OSIV, `findById`'de **eksik olan fetch planını maskeliyormuş**. Kazanç: DB bağlantısı isteğin sonuna kadar tutulmuyor ve ne yükleneceği servis katmanında bilinçli karar oluyor.
 **Projede:** Faz 3 — `spring.jpa.open-in-view=false`; Faz 8.1'de cache'lenecek şeyin entity değil **DTO** olmasının sebebi de bu (lazy proxy serialize edilemez).
 
