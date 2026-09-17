@@ -115,3 +115,12 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 - [x] **9.3 Java/Spring mülakat soruları** ✅ tamamlandı (2026-09-16) — JVM (heap/stack, GC), `equals`/`hashCode`, immutability, concurrency temelleri (thread, `synchronized`, `CompletableFuture`), Spring bean lifecycle & scope'lar. Hepsi kart oldu (`notes/kartlar.md`). En değerli sentez: bean lifecycle diyagramı — proxy'nin tam olarak `BeanPostProcessor.postProcessAfterInitialization()`'da sarıldığını göstermesi, sömestr boyunca tekrar eden self-invocation/`RestClient.builder()`/final-sınıf tuzaklarının ortak kökünü tek diyagramda birleştirdi.
 - [ ] **9.4 System design mock mülakatları.**
 - [ ] **9.5 Behavioral** — FE deneyimini fullstack anlatısına dönüştürme (design system, PWA, yüksek trafik hikâyeleri).
+- [ ] **9.6 Yaygın cloud/managed servisler** — [teori] (2026-09-17'de eklendi) AWS/Cloudflare gibi hazır çözümler hangi problemi çözer, ne zaman "satın alınır" ne zaman kendin kurarsın. Kendi projendeki self-hosted karşılıklarından hazıra doğru sıra:
+  1. **CDN & edge (Cloudflare/CloudFront)** — statik içerik edge'te cache, DDoS/WAF. Projede karşılığı yok, yeni kavram.
+  2. **Managed load balancer / API Gateway (ALB, AWS API Gateway)** — nginx gateway'in (Faz 8.3) bulut karşılığı, ek olarak auto-scaling'e bağlı health check.
+  3. **Object storage (S3)** — blob/dosya depolama, neden DB'de değil. Projede karşılığı yok, yeni kavram.
+  4. **Managed DB (RDS/Aurora)** — kendi kurduğun Postgres + Flyway'in (Faz 3) yönetilen hâli: otomatik backup, Multi-AZ, read replica.
+  5. **Managed message queue (SQS/SNS)** — kendi kurduğun RabbitMQ'nun (Faz 7.1) yönetilen hâli, doğrudan karşılaştır: broker'ı sen mi işletiyorsun, bulut mu.
+  6. **Secrets management (AWS Secrets Manager / Vault)** — projenin bilinen zayıflığı olan düz metin sırların (CLAUDE.md) gerçek çözümü.
+  7. **Container orchestration (ECS vs Kubernetes)** — Faz 8'den devreden "Kubernetes temelleri" maddesiyle birleşir.
+  8. **Managed observability (CloudWatch/Datadog)** — kendi kurduğun Zipkin'in (Faz 8.2) yönetilen/genişletilmiş hâli.
