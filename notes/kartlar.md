@@ -426,6 +426,26 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **Çapa:** CAP = aynı şehrin iki mahallesi arasında yol kesilmesi (P zaten var, soru C mi A mı). Graceful degradation = şehrin bir ilçesindeki elektrik kesintisi diğer ilçeleri etkilemiyor — farklı bir dayanıklılık sorusu.
 **Projede:** notification-service çökse bile order-service 201 dönüyor (Faz 7.2) — bu da CAP değil, aynı graceful degradation deseni.
 
+**S:** Bir mesajın "asla kaybolmaması" gereksinimi teknik olarak neyi garanti eder — exactly-once mi?
+**C:** Hayır, pratikte exactly-once delivery dağıtık sistemlerde neredeyse imkansız/çok pahalı. Gerçek çözüm: outbox pattern ile **at-least-once** garanti (mesaj kaybolmaz ama tekrar gönderilebilir) + alıcı tarafında **idempotent consumer** (aynı mesajı ikinci kez görürse yok sayar — "bu mesajı daha önce aldım mı" kontrolü). İkisi birlikte kullanıcıya "exactly-once" gibi hissettirir, ama alttaki mekanizma at-least-once + dedup'tır. Faz 7'deki outbox pattern kartıyla aynı prensip, farklı domain'de (chat) tekrar karşımıza çıktı.
+**Çapa:** Postacı mektubu iki kez bıraksa bile (at-least-once), kapıdaki kutuda "bu numarayı zaten aldım" etiketi (idempotent consumer) varsa alıcı ikinci kopyayı çöpe atar — sonuç tek mektup almış gibi.
+**Projede:** order-service → RabbitMQ publish outbox pattern (Faz 7.1) aynı köke sahip.
+
+**S:** 1-1 ve grup mesajlaşmayı aynı tabloda modellerken `receiverId` kolonu neden yetersiz kalır?
+**C:** `receiverId` tek bir alıcıyı varsayar (one-to-one ilişki); grup mesajında alıcı **birden fazla** kişi (one-to-many) — tek kolona sığmaz. Çözüm: mesajı bir kişiye değil bir **conversation/room**'a bağlamak (`conversationId`), katılımcıları ayrı bir `conversation_participants` tablosunda tutmak. Mesaj tablosu 1-1 ve grup için **aynı** kalır, fark sadece o conversation'ın kaç participant'ı olduğunda.
+**Çapa:** Alıcı kişiye değil, bir "toplantı odasına" mektup bırakıyorsun — odada kaç kişi var mesajın yapısını değiştirmiyor.
+**Projede:** Yok (mock mülakatta ortaya çıktı).
+
+**S:** Ay bazlı partition'lı bir tabloda, iki partition'a yayılan bir sorgu (örn. ay sınırını geçen mesaj sayfalama) neden "küçük partition hızlı, büyük partition yavaş" diye düşünülmemeli?
+**C:** Index (B-tree) varsa arama süresi tablo boyutuyla **doğrusal değil logaritmik** — 100 satırlık tabloyla 100 milyon satırlık tablo arasında pratik fark yoktur, ikisi de birkaç index sayfası okur. "Az veri = hızlı" refleksi sadece index'siz **full table scan** için geçerli. Sınır geçen bir partition sorgusunun gerçek maliyeti: DB (Postgres gibi) iki partition'ı ayrı ayrı index'ten tarar, sonuçları `createdAt`'e göre **merge-sort** eder — tek sorguda, senkron, transparan; ekstra async mekanizma gerekmez. Maliyet "1 index scan yerine 2 + merge" — ihmal edilebilir.
+**Çapa:** Telefon rehberinde "S" harfini ararken rehberin 50 sayfa mı 5000 sayfa mı olması önemli değil (alfabetik index) — hep birkaç sayfa çevirirsin. Rehber alfabetik değilse (index yok) baştan sona bakman gerekir, o zaman sayfa sayısı gerçekten önemli olur.
+**Projede:** `V3__name_index.sql` (product-service, Faz 3) aynı prensip — isimle arama önce yavaştı (full scan), index eklenince tablo boyutundan bağımsız hızlandı.
+
+**S:** Dağıtık bir sistemde bir kaydı silmeden/kalıcı temizlemeden önce neye dikkat etmek gerekir (chat mesajı silme örneği üzerinden)?
+**C:** Silme işleminin kendisi de bir **event**'tir, normal mesajla aynı teslim garantisine (at-least-once + offline'da kuyrukta bekleme) ihtiyaç duyar. Kaynağı (asıl mesaj/veri) hemen yok edip "silindi" bilgisini de beraber kaybedersen, henüz bu bilgiyi almamış (offline) taraflara bunu asla iletemezsin. Kalıcı silme ancak **tüm ilgili taraflara silme event'i ulaştığı doğrulandıktan sonra** güvenle yapılabilir (tombstone deseni: önce "silindi" işareti/event'ini dağıt, herkes aldıktan sonra fiziksel temizliği yap).
+**Çapa:** Postayı geri çağırmak istiyorsan önce herkese "o mektubu yok say" notunu ulaştırman lazım — notu göndermeden postayı direkt yakarsan, alıcı elindeki mektubu hâlâ gerçek sanır.
+**Projede:** Yok, mock mülakatta ortaya çıktı — outbox/idempotent consumer kartıyla (bu oturumda eklendi) aynı kök: teslim garantisi önce, temizlik sonra.
+
 **S:** Spring'in varsayılan bean scope'u nedir, bunun thread-safety'e yansıması ne?
 **C:** **Singleton** — bean bir kez oluşturulur, her yere inject edildiğinde **aynı nesne** verilir (`a == b` → `true`, iki injection noktası aynı referans). Diğer seçenek `prototype` (`@Scope("prototype")` ile bilerek açılır) — her istekte yeni nesne, `a == b` → `false`. Singleton varsayılan olduğu için, eşzamanlı gelen HTTP istekleri (farklı thread'lerde işlenir) **aynı** service nesnesini paylaşır. Java bunu otomatik sıraya sokmaz — kaç thread isterse aynı metoda aynı anda girebilir. Güvenli olmasının sebebi "sırayla girme" değil, **paylaşılan mutable state olmaması**: metod parametreleri ve local değişkenler her thread'in **kendi stack'inde**, paylaşılmıyor; paylaşılan tek şey nesnenin heap'teki instance alanları — bizim service'lerde bunlar hep `final`, hiç mutasyona uğramıyor.
 **Çapa:** Metodun kodu (bytecode) ortak bir yol tarifi — her thread kendi yolculuğunu (stack) bağımsız yapar. Tehlike sadece yol üzerindeki tek şeritlik köprüde (paylaşılan mutable alan) — orada `synchronized` trafik ışığı görevi görür.
