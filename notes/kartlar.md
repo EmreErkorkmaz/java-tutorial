@@ -415,6 +415,17 @@ Bu kartlar önceden yazıldı, ilgili faz gelince "Projede" satırı doldurulaca
 **Çapa:** ApplicationContext bir kayıt defteri; her bean bir satır. `@Configuration` bir satır değil, birden fazla satır yazan bir form.
 **Projede:** `RabbitConfig` (Faz 7.1) tek `@Configuration` sınıfı, dört ayrı `@Bean` metodu (`orderEventsExchange`, `orderCreatedQueue`, `orderCreatedDlq`, `jsonMessageConverter`) — dördü de context'te ayrı bean.
 
+## URL kısaltıcı mock mülakatı (Faz 9.4)
+
+**S:** Auto-increment tabanlı id üretiminde neden "duplicate" retry mantığına gerek yoktur, ne zaman gerçekten gerekir?
+**C:** Tek bir merkezi DB sequence/counter kullanıldığında üretilen id yapısal olarak benzersizdir — collision **imkansız**, retry mantığı anlamsız defansif kod. Retry ancak id üretimi **koordinesiz/dağıtık** olduğunda gerekli hale gelir: birden fazla node kendi local sayacını tutuyorsa, ya da id random üretiliyorsa (random 7 karakter base62 gibi) — o zaman collision olasılığı gerçek, retry-on-conflict şart. İki stratejiyi (merkezi sayaç + retry) birlikte kullanmak, hangi garantiye güvendiğini netleştirmemiş olduğunun işareti — mülakatta bu tutarsızlık fark edilir.
+**Çapa:** Numaratörlü sıra bileti (banka gişesi) çakışmaz, kimse retry'a ihtiyaç duymaz. Herkesin kendi kafasına göre rastgele numara söylediği bir oda ise çakışma olur, "bir daha söyle" (retry) gerekir.
+
+**S:** "Bağımlı bir servis (örn. analytics) çökse bile ana akış çalışmaya devam eder" — bu CAP teoreminin Partition Tolerance'ı mıdır?
+**C:** Hayır. CAP'in P'si aynı dağıtık sistemin **node'ları arasındaki ağ bölünmesi**yle ilgili (Faz 8.4). Bir servisin bağımlı olduğu başka bir servisin çökmesine rağmen ana akışın devam etmesi farklı bir kavram: **graceful degradation / bulkhead** — gevşek bağlılık sayesinde bir bileşenin arızası bütün sistemi düşürmüyor. İkisi ilişkili ("dayanıklılık" şemsiyesi altında) ama CAP spesifik bir teorem, diğeri genel bir tasarım prensibi. Mülakatta bunları karıştırmak yaygın.
+**Çapa:** CAP = aynı şehrin iki mahallesi arasında yol kesilmesi (P zaten var, soru C mi A mı). Graceful degradation = şehrin bir ilçesindeki elektrik kesintisi diğer ilçeleri etkilemiyor — farklı bir dayanıklılık sorusu.
+**Projede:** notification-service çökse bile order-service 201 dönüyor (Faz 7.2) — bu da CAP değil, aynı graceful degradation deseni.
+
 **S:** Spring'in varsayılan bean scope'u nedir, bunun thread-safety'e yansıması ne?
 **C:** **Singleton** — bean bir kez oluşturulur, her yere inject edildiğinde **aynı nesne** verilir (`a == b` → `true`, iki injection noktası aynı referans). Diğer seçenek `prototype` (`@Scope("prototype")` ile bilerek açılır) — her istekte yeni nesne, `a == b` → `false`. Singleton varsayılan olduğu için, eşzamanlı gelen HTTP istekleri (farklı thread'lerde işlenir) **aynı** service nesnesini paylaşır. Java bunu otomatik sıraya sokmaz — kaç thread isterse aynı metoda aynı anda girebilir. Güvenli olmasının sebebi "sırayla girme" değil, **paylaşılan mutable state olmaması**: metod parametreleri ve local değişkenler her thread'in **kendi stack'inde**, paylaşılmıyor; paylaşılan tek şey nesnenin heap'teki instance alanları — bizim service'lerde bunlar hep `final`, hiç mutasyona uğramıyor.
 **Çapa:** Metodun kodu (bytecode) ortak bir yol tarifi — her thread kendi yolculuğunu (stack) bağımsız yapar. Tehlike sadece yol üzerindeki tek şeritlik köprüde (paylaşılan mutable alan) — orada `synchronized` trafik ışığı görevi görür.
