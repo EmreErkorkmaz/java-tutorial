@@ -90,7 +90,25 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 
 ---
 
+## Günlük Java turu (2026-09-22'den itibaren)
+
+Sebep: iş ilanı taramasında (Notion → İş takibi → [Learning Roadmap](https://app.notion.com/p/2767699cf7f34d6e87f811eafb9105be)) Java 3 ilan / öncelik **Orta** / mülakat sırası 4 çıkıyor; AWS 7 ilan / **Yüksek** / sıra 1. Sekiz faz Java yapıldı, cloud tarafına hiç girilmedi. Bu repo artık ana blok değil, **günlük kuyruk**: öğrenilen soğumasın diye her gün kısa bir geri çağırma turu yapılır, sıradaki asıl konu Notion'dan gelir.
+
+```
+Günlük blok (1.5 saat)
+├─ 0-75 dk   Notion sırasındaki konu (AWS, Kubernetes, tRPC, ...)
+└─ 75-90 dk  java-tutorial turu:
+              ├─ 3 kart (notes/kartlar.md, [zayıf] olanlar önce)
+              └─ şunlardan BİRİ: mock mülakatın bir adımı · bir [teori] maddesi · ApiError refactor'ü
+```
+
+**Kural: tur 15 dakikayı aşarsa kesilir**, kalan kısım ertesi güne. Burnout'u yaratan şey blokların uzaması. Uzun oturum (açılış quiz'i + mimari çapa + ana blok + teach-back) haftada en fazla bir kez yapılır; ayrıntısı [CLAUDE.md](CLAUDE.md#oturum-şablonu-2026-09-10dan-itibaren)'de.
+
+---
+
 ## Kalan iş — eski fazlardan artanlar
+
+Hepsi günlük tura sığacak boyutta. Cloud/altyapı maddeleri buradan **çıkarıldı** (2026-09-22): Kubernetes temelleri, 9.6'daki managed servis listesi, Prometheus + Grafana ve "image registry'e push" artık Notion'daki *AWS temel servisleri* / *GCP temel servisleri* / *Kubernetes temelleri* kartlarında takip ediliyor — Java işi değiller ve iki yerde takip edilmeleri çift bakım demekti.
 
 - [ ] **Hata response body'sini tipli `record`'a çevir** — [uygulama] [~30 dk, ısınma işi]
   - Şu an `GlobalExceptionHandler` `Map<String, Object>` dönüyor: alan adları derleyici tarafından kontrol edilmiyor, contract yalnızca kodu okuyarak anlaşılıyor.
@@ -99,28 +117,17 @@ Test durumu: 23 `@Test` (13 product-service, 10 order-service, notification-serv
 - [ ] **Test piramidi** — [teori] Faz 2'de pratikte ölçüldü (mock'lu 3 test 0.08 s vs context ayağa kalkan test ~1 s); teorisi konuşulacak.
 - [x] **Isolation level'lar & optimistic locking (`@Version`)** — [teori] ✅ 2026-09-19'da flash sale mock'unda kapandı (kartlar: lost update, locking seçimi). READ COMMITTED varsayılanı, lost update senaryosu, optimistic vs pessimistic locking.
 - [ ] **Refresh token** — [teori] access 15 dk + sunucuda saklanan, iptal edilebilir refresh token. Uygulanmaz: production'da IdP işi.
-- [ ] **Monolit vs mikroservis trade-off'ları** — [teori] Faz 7 girişinde, kendi iki servisimizin bedeli üzerinden konuşulur.
+- [ ] **Monolit vs mikroservis trade-off'ları** — [teori] kendi üç servisimizin bedeli üzerinden konuşulur.
 - [ ] **Circuit breaker** — [teori] Spring core'da yok (Resilience4j gerekir). CLOSED → OPEN → HALF_OPEN; retry geçici hatayı, breaker kalıcı kesintiyi çözer. Faz 6'da ölçülen "kesintide 14 ms → 782 ms" bunun gerekçesi.
 - [ ] **RS256 + JWKS** — [teori] Faz 6'da HS256'nın sınırı canlı gösterildi (doğrulama yeteneği = üretme yeteneği). Asimetrikte private key yalnızca üreticide; JWKS ile public key `/.well-known/jwks.json`'dan dağıtılır, `kid` header'ı hangi anahtar olduğunu söyler; Spring tarafı tek property: `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` (decoder'ı Boot kendisi kurar, elle `JwtConfig` gerekmez). Keycloak/Auth0/Cognito hepsi böyle çalışır — gerçek projede bu mekanizma yazılmaz, yapılandırılır.
-- [ ] **Kubernetes temelleri** — [teori] pod/service/deployment, ne zaman gerekir.
-- [ ] **Prometheus + Grafana** — [opsiyonel] Faz 8.2 (tracing) ile aynı oturumda değerlendirilir; Actuator zaten ayakta.
-- [ ] **Image registry'e push + deploy** — [uygulama] Faz 9'daki portfolyo projesiyle birleştirilecek (bkz. 9.1).
 
 ---
 
-## Faz 9 — Portfolyo projesi & mülakat hazırlığı
+## Faz 9 — mülakat hazırlığı
 
-- [ ] **9.1 Fullstack portfolyo projesi** — React/Next.js frontend + Spring Boot backend, Dockerize **ve deploy edilmiş** (Railway / Fly.io / Render; image registry'e push burada yapılır — Faz 5'ten devreden madde). README'de mimari kararlar yazılı. Comment yoğunluğu bu repodakinden düşük tutulur (production repo tarzı).
-- [ ] **9.2 Java'da Collections akıcılığı** — (2026-09-10'da daraltıldı) hedef geniş DSA çalışması **değil**: List/Map/Set/Stream API'yi mülakatta duraksamadan kullanabilmek. Klasik algoritma seti kapsam dışı; hedef roller için getirisi düşük, zamanı 8.x mimari tartışmalarına gidiyor.
+- [ ] **9.1 Fullstack portfolyo projesi** — ⏸️ **askıya alındı (2026-09-22).** Gerekçe: cloud konuları teorik ilerleme kararı alındı (mülakatta canlı deployment istenmiyor), ve bu repo zaten GitHub'da üç servis + CI + Testcontainers kanıtı sunuyor. Tekrar açılırsa "React frontend + mevcut backend, deploy edilmiş" olarak açılır.
+- [ ] **9.2 Java'da Collections akıcılığı** — [drill] sıraya alınmaz; somut bir mülakat öncesinde tekrar edilir. Hedef geniş DSA **değil**: List/Map/Set/Stream API'yi duraksamadan kullanabilmek.
 - [x] **9.3 Java/Spring mülakat soruları** ✅ tamamlandı (2026-09-16) — JVM (heap/stack, GC), `equals`/`hashCode`, immutability, concurrency temelleri (thread, `synchronized`, `CompletableFuture`), Spring bean lifecycle & scope'lar. Hepsi kart oldu (`notes/kartlar.md`). En değerli sentez: bean lifecycle diyagramı — proxy'nin tam olarak `BeanPostProcessor.postProcessAfterInitialization()`'da sarıldığını göstermesi, sömestr boyunca tekrar eden self-invocation/`RestClient.builder()`/final-sınıf tuzaklarının ortak kökünü tek diyagramda birleştirdi.
-- [ ] **9.4 System design mock mülakatları.** Yapılanlar: URL kısaltıcı, chat sistemi (2026-09-17), flash sale (2026-09-19 + 2026-09-22, tamamlandı: kapı/hakem ayrımı, lost update, kilit seçimi, rezervasyon süresi ve sweeper yarışı, Redis'in çökmesi). Sonraki mock için aday konular: haber akışı (fan-out), dosya/medya depolama.
-- [ ] **9.5 Behavioral** — FE deneyimini fullstack anlatısına dönüştürme (design system, PWA, yüksek trafik hikâyeleri).
-- [ ] **9.6 Yaygın cloud/managed servisler** — [teori] (2026-09-17'de eklendi) AWS/Cloudflare gibi hazır çözümler hangi problemi çözer, ne zaman "satın alınır" ne zaman kendin kurarsın. Kendi projendeki self-hosted karşılıklarından hazıra doğru sıra:
-  1. **CDN & edge (Cloudflare/CloudFront)** — statik içerik edge'te cache, DDoS/WAF. Projede karşılığı yok, yeni kavram.
-  2. **Managed load balancer / API Gateway (ALB, AWS API Gateway)** — nginx gateway'in (Faz 8.3) bulut karşılığı, ek olarak auto-scaling'e bağlı health check.
-  3. **Object storage (S3)** — blob/dosya depolama, neden DB'de değil. Projede karşılığı yok, yeni kavram.
-  4. **Managed DB (RDS/Aurora)** — kendi kurduğun Postgres + Flyway'in (Faz 3) yönetilen hâli: otomatik backup, Multi-AZ, read replica.
-  5. **Managed message queue (SQS/SNS)** — kendi kurduğun RabbitMQ'nun (Faz 7.1) yönetilen hâli, doğrudan karşılaştır: broker'ı sen mi işletiyorsun, bulut mu.
-  6. **Secrets management (AWS Secrets Manager / Vault)** — projenin bilinen zayıflığı olan düz metin sırların (CLAUDE.md) gerçek çözümü.
-  7. **Container orchestration (ECS vs Kubernetes)** — Faz 8'den devreden "Kubernetes temelleri" maddesiyle birleşir.
-  8. **Managed observability (CloudWatch/Datadog)** — kendi kurduğun Zipkin'in (Faz 8.2) yönetilen/genişletilmiş hâli.
+- [ ] **9.4 System design mock mülakatları** — günlük turun ana aktivitesi. Yapılanlar: URL kısaltıcı, chat sistemi (2026-09-17), flash sale (2026-09-19 + 2026-09-22, tamamlandı: kapı/hakem ayrımı, lost update, kilit seçimi, rezervasyon süresi ve sweeper yarışı, Redis'in çökmesi). Sonraki mock için aday konular: haber akışı (fan-out), dosya/medya depolama.
+- [ ] **9.5 Behavioral** — 2026-09-22'de Notion'a taşındı (*Mülakat anlatısı (behavioral)* kartı): iş arama işi, Java işi değil.
+- [ ] **9.6 Yaygın cloud/managed servisler** — 2026-09-22'de Notion'a taşındı. Sekiz maddelik sıra (CDN → managed LB/API Gateway → S3 → RDS → SQS/SNS → Secrets Manager → ECS vs K8s → CloudWatch) ve her maddenin bu repodaki self-hosted karşılığı *AWS temel servisleri* kartının gövdesinde.

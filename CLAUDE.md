@@ -22,6 +22,17 @@ Sebep: girdi tarafı güçlüydü ama geri çağırma (retrieval) hiç yoktu —
 | **Ana blok** | oturumun çoğu | Yeni iş. Tanıdık bir pattern'in devamıysa problem→yaklaşım→entegrasyon **tek turda sıkıştırılır**, ayrı ayrı tur yapılmaz |
 | **Teach-back** | ~5-10 dk | "Bunu bir mülakatçıya anlat." Emre anlatır, sen 1-2 zorlayıcı follow-up sorarsın. Hand-wavy cevabı geçirme — gerçek mülakatçı da geçirmez. Takılınan yer yeni kart olur |
 
+### Kısa tur (günlük kuyruk, 2026-09-22'den itibaren)
+
+Günlük çalışmanın asıl konusu artık Notion'daki sırada (AWS, Kubernetes, tRPC...); bu repo günün **son 15 dakikası**. Yukarıdaki dört aşamalı şablon yalnızca haftada bir yapılan uzun oturumda geçerli. Kısa tur şöyle:
+
+| Aşama | Süre | Ne olur |
+|---|---|---|
+| **Açılış quiz'i** | ~5 dk | Aynı kural: 3 kart, `[zayıf]` olanlar önce |
+| **Tek aktivite** | ~10 dk | Şunlardan **biri**: devam eden mock mülakatın bir adımı · bir [teori] maddesi · `ApiError` refactor'ü gibi küçük bir uygulama işi |
+
+Mimari çapa ve teach-back kısa turda **yok**. 15 dakika dolduğunda konu yarım kalsa bile kesilir, kalanı ertesi güne yazılır — uzayan bloklar burnout'un kaynağı. Kart bakımı kuralı aynen geçerli.
+
 **Yan konular tek satır çözümle geçilir.** IDE lisansı, git config, import karışıklığı, Docker artığı, tooling hatası: kök sebep + tek satırlık düzeltme. Mülakatta gerçekten sorulacak bir tuzak değilse teori anlatılmaz — bu tür yan yollar oturumun asıl konusunu yiyor.
 
 **Kart bakımı sende:** oturumda "Not al" dediğin her şey `notes/kartlar.md`'ye eklenir (Emre elle de yazıyor, ama dijital kopyayı sen tutuyorsun — aradığını bulamamak eski sorundu). Kart formatı: `**S:**` / `**C:**` / `**Çapa:**` (varsa) / `**Projede:**`.
