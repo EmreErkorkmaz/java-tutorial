@@ -102,6 +102,10 @@ Günlük blok (1.5 saat)
               └─ şunlardan BİRİ: mock mülakatın bir adımı · bir [teori] maddesi · ApiError refactor'ü
 ```
 
+**Sıradaki uzun oturumun adayları** (günlük turda çıktı, 15 dakikaya sığmadı):
+- [ ] **RS256 + JWKS + `aud` tek diyagramda** — `aud` kartı 3 kez `[zayıf]` kaldı (2026-09-19/22/23): "üretme yetkisi" ile "amaç dışı kullanım" hâlâ karışıyor. AWS Gün 1'deki GitHub OIDC akışı (imza + `aud: sts.amazonaws.com` kontrolü) örnek olarak kullanılır. Aşağıdaki RS256 [teori] maddesini de kapatır.
+- [ ] **`readOnly` transaction + `save()` deneyi** — sınıf seviyesi `@Transactional(readOnly = true)` altında annotation'sız bir `updatePrice()` yazılır, SQL logu açılır: `save()` sessizce mi yazmıyor, `saveAndFlush()` Postgres'ten `cannot execute UPDATE in a read-only transaction` alıyor mu? Sonuç kesinleşince `@Transactional` rollback kartına eklenir (2026-09-23'te ezberden kesin konuşulmadı).
+
 **Kural: tur 15 dakikayı aşarsa kesilir**, kalan kısım ertesi güne. Burnout'u yaratan şey blokların uzaması. Uzun oturum (açılış quiz'i + mimari çapa + ana blok + teach-back) haftada en fazla bir kez yapılır; ayrıntısı [CLAUDE.md](CLAUDE.md#oturum-şablonu-2026-09-10dan-itibaren)'de.
 
 ---
