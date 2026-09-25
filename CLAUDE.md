@@ -17,7 +17,7 @@ Sebep: girdi tarafı güçlüydü ama geri çağırma (retrieval) hiç yoktu —
 
 | Aşama | Süre | Ne olur |
 |---|---|---|
-| **Açılış quiz'i** | ~5 dk | [notes/kartlar.md](notes/kartlar.md)'den 3 soru: biri son fazdan, biri ortadan, biri eskiden. Varsa `[zayıf]` kartlar önce sorulur. Sözlü ve kısa; bilinemeyen kart `[zayıf]` işaretlenir |
+| **Açılış quiz'i** | ~5 dk | [notes/kartlar.md](notes/kartlar.md)'den 3 soru: biri son fazdan, biri ortadan, biri eskiden. Varsa `[zayıf]` kartlar önce sorulur, ama son sorulduğu günden itibaren 3 gün dolmamış olanlar atlanır; aynı konudan en fazla bir kart (kural `kartlar.md` başında). Sözlü ve kısa; bilinemeyen kart `[zayıf · son: TARİH]` işaretlenir |
 | **Mimari çapa** | 1-2 cümle | Bugünkü işin büyük resimde nereye oturduğu. Hat: tek servis → **senkron sınır** (Faz 6) → **asenkron sınır** (Faz 7) → **dağıtık sistemi işletmek** (Faz 8) |
 | **Ana blok** | oturumun çoğu | Yeni iş. Tanıdık bir pattern'in devamıysa problem→yaklaşım→entegrasyon **tek turda sıkıştırılır**, ayrı ayrı tur yapılmaz |
 | **Teach-back** | ~5-10 dk | "Bunu bir mülakatçıya anlat." Emre anlatır, sen 1-2 zorlayıcı follow-up sorarsın. Hand-wavy cevabı geçirme — gerçek mülakatçı da geçirmez. Takılınan yer yeni kart olur |
